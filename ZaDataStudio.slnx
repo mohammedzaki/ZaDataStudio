@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ZaDataStudio.ApiService/ZaDataStudio.ApiService.csproj" />
+    <Project Path="src/ZaDataStudio.AppHost/ZaDataStudio.AppHost.csproj" />
+    <Project Path="src/ZaDataStudio.Application/ZaDataStudio.Application.csproj" />
+    <Project Path="src/ZaDataStudio.Domain/ZaDataStudio.Domain.csproj" />
+    <Project Path="src/ZaDataStudio.Infrastructure/ZaDataStudio.Infrastructure.csproj" />
+    <Project Path="src/ZaDataStudio.ServiceDefaults/ZaDataStudio.ServiceDefaults.csproj" />
+    <Project Path="src/ZaDataStudio.Web/ZaDataStudio.Web.csproj" />
+  </Folder>
+</Solution>
