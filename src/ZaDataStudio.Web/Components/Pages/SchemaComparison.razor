@@ -311,10 +311,18 @@
                     <span class="bi bi-download me-1"></span>
                     Download Excel Template
                 </button>
-                <label class="btn btn-success">
-                    <span class="bi bi-upload me-1"></span>
-                    Upload Mapping Excel
-                    <InputFile OnChange="HandleExcelUpload" accept=".xlsx,.xls" style="display: none;" />
+                <label class="btn btn-success @(isUploadingExcel ? "disabled" : "")" style="@(isUploadingExcel ? "pointer-events: none;" : "")">
+                    @if (isUploadingExcel)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        <span>Uploading...</span>
+                    }
+                    else
+                    {
+                        <span class="bi bi-upload me-1"></span>
+                        <span>Upload Mapping Excel</span>
+                    }
+                    <InputFile OnChange="HandleExcelUpload" accept=".xlsx,.xls" style="display: none;" disabled="@isUploadingExcel" />
                 </label>
             </div>
 
@@ -1419,6 +1427,7 @@ private List<TableMapping> tableMappings = new();
     private string excelValidationReport = string.Empty;
     private string excelLoadMessage = string.Empty;
     private bool isComparingExcelMappings = false;
+    private bool isUploadingExcel = false;
     private ExcelMappingComparisonResult? excelComparisonResult;
     
     // Manual mapping SQL generation
@@ -2354,6 +2363,9 @@ private async Task TestBothConnections()
 
     private async Task HandleExcelUpload(InputFileChangeEventArgs e)
     {
+        isUploadingExcel = true;
+        errorMessage = string.Empty;
+        
         try
         {
             var file = e.File;
@@ -2362,10 +2374,15 @@ private async Task TestBothConnections()
             using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB max
             excelMappingConfig = await ExcelMappingService.ParseMappingExcelAsync(stream);
             excelGeneratedSQL = string.Empty;
+            excelValidationReport = string.Empty;
         }
         catch (Exception ex)
         {
             errorMessage = $"Error uploading Excel file: {ex.Message}";
+        }
+        finally
+        {
+            isUploadingExcel = false;
         }
     }
 

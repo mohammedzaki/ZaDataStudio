@@ -1,5 +1,4 @@
 using ZaDataStudio.Web.Components;
-using ZaDataStudio.Web.Services;
 using ZaDataStudio.Application.Common.Interfaces;
 using ZaDataStudio.Infrastructure.Persistence.Repositories;
 
@@ -14,9 +13,6 @@ builder.Services.AddScoped<ISessionRepository, SessionRepository>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Excel.ExcelMappingService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.DataComparisonService>();
-
-// Register legacy services (for backward compatibility during migration)
-builder.Services.AddScoped<SessionPersistenceService>();
 
 var app = builder.Build();
 
