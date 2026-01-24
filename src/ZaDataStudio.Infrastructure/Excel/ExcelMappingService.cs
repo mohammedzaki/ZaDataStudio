@@ -47,6 +47,19 @@ public class ExcelMappingService
         return config;
     }
 
+    private string FormatName(string tableName)
+    {
+        // Ensures table name is properly bracketed for SQL Server
+        // e.g., "dbo.Users" -> "[dbo].[Users]"
+        // e.g., "[dbo].[Users]" -> "[dbo].[Users]" (unchanged)
+
+        if (string.IsNullOrWhiteSpace(tableName))
+            return tableName;
+
+        // Remove any existing brackets
+        return tableName.Replace("[", "").Replace("]", "");
+    }
+
     private void ParseDataMappings(IXLWorksheet sheet, DataMappingConfiguration config)
     {
         var rows = sheet.RowsUsed().Skip(1); // Skip header
@@ -62,14 +75,14 @@ public class ExcelMappingService
 
             var mapping = new DataColumnMapping
             {
-                NewTableName = newTableName,
-                NewColumn = newColumn,
+                NewTableName = FormatName(newTableName),
+                NewColumn = FormatName(newColumn),
                 NewDataType = row.Cell(3).GetString(),
                 NewColumnNullable = ParseNullable(row.Cell(4).GetString()),
                 HasLookup = ParseBoolean(row.Cell(5).GetString()),
                 NewColumnDescription = row.Cell(6).GetString(),
-                OldTableName = row.Cell(7).GetString(),
-                OldColumn = row.Cell(8).GetString(),
+                OldTableName = FormatName(row.Cell(7).GetString()),
+                OldColumn = FormatName(row.Cell(8).GetString()),
                 OldDataType = row.Cell(9).GetString(),
                 OldColumnNullable = ParseNullable(row.Cell(10).GetString()),
                 MappingRule = row.Cell(11).GetString(),

@@ -363,7 +363,7 @@
                         <strong>Validation Report</strong>
                     </div>
                     <div class="card-body">
-                        <pre style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px;"><code>@excelValidationReport</code></pre>
+                        <pre style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;"><code>@excelValidationReport</code></pre>
                     </div>
                 </div>
             }
@@ -375,7 +375,7 @@
                         <strong>Generated SQL from Excel Mapping</strong>
                     </div>
                     <div class="card-body">
-                        <pre style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px;"><code>@excelGeneratedSQL</code></pre>
+                        <pre style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;"><code>@excelGeneratedSQL</code></pre>
                         <div class="mt-2">
                             <button class="btn btn-primary" @onclick="DownloadExcelSQL">
                                 <span class="bi bi-download me-1"></span>
@@ -862,7 +862,7 @@
                                 <span>Includes mappings loaded from Excel.</span>
                             }
                         </div>
-                        <pre style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px;"><code>@manualMappingGeneratedSQL</code></pre>
+                        <pre style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;"><code>@manualMappingGeneratedSQL</code></pre>
                         <div class="mt-2">
                             <button class="btn btn-primary" @onclick="DownloadManualMappingSQL">
                                 <span class="bi bi-download me-1"></span>
@@ -2956,14 +2956,17 @@ private async Task TestBothConnections()
             var query = @"
                 SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA + '.' + TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
+                WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
 
             using (var cmd = new SqlCommand(query, sourceConn))
             {
+                cmd.Parameters.AddWithValue("@tableSchema", sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
                 cmd.Parameters.AddWithValue("@tableName", sourceTable);
                 cmd.Parameters.AddWithValue("@columnName", sourceColumn);
 
                 using var reader = await cmd.ExecuteReaderAsync();
+                var str = cmd.ToString();
+
                 if (await reader.ReadAsync())
                 {
                     var dataType = reader.GetString(0);
@@ -2984,10 +2987,11 @@ private async Task TestBothConnections()
             var query = @"
                 SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA + '.' + TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
+                WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
 
             using (var cmd = new SqlCommand(query, destConn))
             {
+                cmd.Parameters.AddWithValue("@tableSchema", destTable.Contains(".") ? destTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
                 cmd.Parameters.AddWithValue("@tableName", destTable);
                 cmd.Parameters.AddWithValue("@columnName", destColumn);
 

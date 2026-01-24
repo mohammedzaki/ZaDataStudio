@@ -8,6 +8,11 @@
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.2" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
+    
+    <!-- Explicit references to fix transitive package vulnerabilities -->
+    <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.81.0" />
+    <PackageReference Include="System.IO.Packaging" Version="10.0.2" />
   </ItemGroup>
 
   <PropertyGroup>
