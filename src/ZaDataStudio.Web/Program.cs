@@ -1,6 +1,7 @@
 using ZaDataStudio.Web.Components;
 using ZaDataStudio.Application.Common.Interfaces;
 using ZaDataStudio.Infrastructure.Persistence.Repositories;
+using ZaDataStudio.Application.Mapping;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,7 @@ builder.Services.AddRazorComponents()
 
 // Register Infrastructure Services (Clean Architecture)
 builder.Services.AddScoped<ISessionRepository, SessionRepository>();
+builder.Services.AddScoped<IMappingComparisonService, MappingComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Excel.ExcelMappingService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.DataComparisonService>();

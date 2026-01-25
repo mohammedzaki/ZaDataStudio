@@ -6,7 +6,7 @@ namespace ZaDataStudio.Application.Mapping;
 /// <summary>
 /// Validation service for mapping configurations
 /// </summary>
-public class MappingValidator
+public class MappingValidator : IMappingValidator
 {
     public ValidationReport Validate(DataMappingConfiguration config)
     {
