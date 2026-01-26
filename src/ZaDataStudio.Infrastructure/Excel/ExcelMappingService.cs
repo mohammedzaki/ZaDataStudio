@@ -80,13 +80,13 @@ public class ExcelMappingService
                 NewDataType = row.Cell(3).GetString(),
                 NewColumnNullable = ParseNullable(row.Cell(4).GetString()),
                 HasLookup = ParseBoolean(row.Cell(5).GetString()),
-                NewLookupTable = FormatName(row.Cell(6).GetString()),
+                NewLookupTable = row.Cell(6).GetString(),
                 NewColumnDescription = row.Cell(7).GetString(),
                 OldTableName = FormatName(row.Cell(8).GetString()),
                 OldColumn = FormatName(row.Cell(9).GetString()),
                 OldDataType = row.Cell(10).GetString(),
                 OldColumnNullable = ParseNullable(row.Cell(11).GetString()),
-                OldLookupTable = FormatName(row.Cell(12).GetString()),
+                OldLookupTable = row.Cell(12).GetString(),
                 MappingRule = row.Cell(13).GetString(),
                 Notes = row.Cell(14).GetString(),
                 MappingStatus = row.Cell(15).GetString(),
@@ -139,10 +139,11 @@ public class ExcelMappingService
         sheet.Cell(1, 10).Value = "Old DataType";
         sheet.Cell(1, 11).Value = "Old Column Nullable";
         sheet.Cell(1, 12).Value = "Old Lookup Table";
-        sheet.Cell(1, 13).Value = "Mapping Status";
+        sheet.Cell(1, 13).Value = "Mapping Rule";
         sheet.Cell(1, 14).Value = "Notes";
+        sheet.Cell(1, 15).Value = "Mapping Status";
 
-        // Sample data
+        // Sample data row 1: Direct mapping
         int row = 2;
         sheet.Cell(row, 1).Value = "dbo.Destination";
         sheet.Cell(row, 2).Value = "DestinationId";
@@ -156,13 +157,37 @@ public class ExcelMappingService
         sheet.Cell(row, 10).Value = "INT";
         sheet.Cell(row, 11).Value = "NO";
         sheet.Cell(row, 12).Value = "";
-        sheet.Cell(row, 13).Value = "Approved";
+        sheet.Cell(row, 13).Value = "";
         sheet.Cell(row, 14).Value = "Direct mapping";
+        sheet.Cell(row, 15).Value = "Approved";
+
+        // Sample data row 2: Lookup mapping with specification
+        row = 3;
+        sheet.Cell(row, 1).Value = "dbo.Employee";
+        sheet.Cell(row, 2).Value = "EmployeeType";
+        sheet.Cell(row, 3).Value = "NVARCHAR(50)";
+        sheet.Cell(row, 4).Value = "NO";
+        sheet.Cell(row, 5).Value = "YES";
+        sheet.Cell(row, 6).Value = "[LookupValues].[LookupTypeId] = 1600";
+        sheet.Cell(row, 7).Value = "Employee type from lookup";
+        sheet.Cell(row, 8).Value = "OldSystem.Employee";
+        sheet.Cell(row, 9).Value = "EmpType";
+        sheet.Cell(row, 10).Value = "VARCHAR(50)";
+        sheet.Cell(row, 11).Value = "YES";
+        sheet.Cell(row, 12).Value = "[OldLookupValues].[LookupTypeId] = 1500";
+        sheet.Cell(row, 13).Value = "";
+        sheet.Cell(row, 14).Value = "Lookup values filtered by type ID";
+        sheet.Cell(row, 15).Value = "Approved";
 
         // Format
-        var headerRange = sheet.Range(1, 1, 1, 14);
+        var headerRange = sheet.Range(1, 1, 1, 15);
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        // Add notes to lookup columns (using cell notes instead of comments)
+        sheet.Cell(2, 6).Value = "Example: [LookupValues].[LookupTypeId] = 1600";
+        sheet.Cell(2, 12).Value = "Example: [OldLookupValues].[LookupTypeId] = 1500";
+        
         sheet.Columns().AdjustToContents();
         sheet.SheetView.FreezeRows(1);
 
@@ -192,6 +217,8 @@ public class ExcelMappingService
         var pending = config.ColumnMappings.Count(m => m.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase));
         var outofscope = config.ColumnMappings.Count(m => m.MappingStatus.Equals("OutOfScope", StringComparison.OrdinalIgnoreCase));
         var lookupsNeeded = config.ColumnMappings.Count(m => m.HasLookup);
+        var lookupsWithSpec = config.ColumnMappings.Count(m => 
+            !string.IsNullOrWhiteSpace(m.NewLookupTable) || !string.IsNullOrWhiteSpace(m.OldLookupTable));
         var nullMappings = config.ColumnMappings.Count(m => 
             string.IsNullOrWhiteSpace(m.OldColumn) || 
             m.OldColumn.Equals("N/A", StringComparison.OrdinalIgnoreCase));
@@ -204,8 +231,27 @@ public class ExcelMappingService
             report.AppendLine($"  Out Of Scope: {outofscope}");
         if (lookupsNeeded > 0)
             report.AppendLine($"  Requires Lookups: {lookupsNeeded}");
+        if (lookupsWithSpec > 0)
+            report.AppendLine($"  Lookups with Filter Spec: {lookupsWithSpec}");
         if (nullMappings > 0)
             report.AppendLine($"  NULL Mappings (N/A): {nullMappings}");
+        report.AppendLine();
+        
+        // Lookup specification details
+        if (lookupsWithSpec > 0)
+        {
+            report.AppendLine("Lookup Filter Specifications:");
+            foreach (var mapping in config.ColumnMappings.Where(m => 
+                !string.IsNullOrWhiteSpace(m.NewLookupTable) || !string.IsNullOrWhiteSpace(m.OldLookupTable)))
+            {
+                report.AppendLine($"  {mapping.NewTableName}.{mapping.NewColumn}:");
+                if (!string.IsNullOrWhiteSpace(mapping.OldLookupTable))
+                    report.AppendLine($"    Old: {mapping.OldLookupTable}");
+                if (!string.IsNullOrWhiteSpace(mapping.NewLookupTable))
+                    report.AppendLine($"    New: {mapping.NewLookupTable}");
+            }
+            report.AppendLine();
+        }
         
         return report.ToString();
     }

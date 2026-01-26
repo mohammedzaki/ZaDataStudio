@@ -15,5 +15,12 @@ namespace ZaDataStudio.Domain.Entities
         public List<string> SourceSampleValues { get; set; } = new();
         public List<string> DestinationSampleValues { get; set; } = new();
         public List<string> MismatchedValues { get; set; } = new();
+        
+        // New properties for lookup specification support
+        public string? OldLookupSpec { get; set; }
+        public string? NewLookupSpec { get; set; }
+        public bool LookupFilterMismatch { get; set; }
+        public string? LookupFilterMessage { get; set; }
     }
 }
+

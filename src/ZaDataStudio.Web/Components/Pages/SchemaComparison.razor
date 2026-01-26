@@ -399,11 +399,42 @@
                                     <div class="card-header">
                                         <strong>@lookup.TableName.@lookup.ColumnName</strong>
                                         <span class="badge bg-info ms-2">Lookup</span>
+                                        @if (!string.IsNullOrEmpty(lookup.OldLookupSpec) || !string.IsNullOrEmpty(lookup.NewLookupSpec))
+                                        {
+                                            <span class="badge bg-secondary ms-2">Filtered</span>
+                                        }
                                     </div>
                                     <div class="card-body">
+                                        @if (!string.IsNullOrEmpty(lookup.OldLookupSpec) || !string.IsNullOrEmpty(lookup.NewLookupSpec))
+                                        {
+                                            <div class="alert alert-info mb-3">
+                                                <strong><span class="bi bi-filter me-2"></span>Lookup Filter Specifications:</strong>
+                                                @if (!string.IsNullOrEmpty(lookup.OldLookupSpec))
+                                                {
+                                                    <div class="mt-1"><strong>Old System:</strong> <code>@lookup.OldLookupSpec</code></div>
+                                                }
+                                                @if (!string.IsNullOrEmpty(lookup.NewLookupSpec))
+                                                {
+                                                    <div class="mt-1"><strong>New System:</strong> <code>@lookup.NewLookupSpec</code></div>
+                                                }
+                                            </div>
+                                        }
+                                        
+                                        @if (lookup.LookupFilterMismatch)
+                                        {
+                                            <div class="alert alert-danger mb-3">
+                                                <strong><span class="bi bi-exclamation-triangle me-2"></span>Lookup Filter Mismatch!</strong>
+                                                <div class="mt-1">@lookup.LookupFilterMessage</div>
+                                            </div>
+                                        }
+                                        
                                         <div class="row">
                                             <div class="col-md-6">
                                                 <h6>Source: @lookup.SourceTable.@lookup.SourceColumn</h6>
+                                                @if (!string.IsNullOrEmpty(lookup.OldLookupSpec))
+                                                {
+                                                    <p class="text-muted small">Filtered by: <code>@lookup.OldLookupSpec</code></p>
+                                                }
                                                 <p><strong>Distinct Values:</strong> @lookup.SourceDistinctCount</p>
                                                 @if (lookup.SourceSampleValues.Any())
                                                 {
@@ -418,6 +449,10 @@
                                             </div>
                                             <div class="col-md-6">
                                                 <h6>Destination: @lookup.TableName.@lookup.ColumnName</h6>
+                                                @if (!string.IsNullOrEmpty(lookup.NewLookupSpec))
+                                                {
+                                                    <p class="text-muted small">Filtered by: <code>@lookup.NewLookupSpec</code></p>
+                                                }
                                                 <p><strong>Distinct Values:</strong> @lookup.DestinationDistinctCount</p>
                                                 @if (lookup.DestinationSampleValues.Any())
                                                 {
