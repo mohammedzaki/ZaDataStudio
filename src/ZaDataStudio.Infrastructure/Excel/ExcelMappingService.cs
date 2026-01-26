@@ -80,14 +80,16 @@ public class ExcelMappingService
                 NewDataType = row.Cell(3).GetString(),
                 NewColumnNullable = ParseNullable(row.Cell(4).GetString()),
                 HasLookup = ParseBoolean(row.Cell(5).GetString()),
-                NewColumnDescription = row.Cell(6).GetString(),
-                OldTableName = FormatName(row.Cell(7).GetString()),
-                OldColumn = FormatName(row.Cell(8).GetString()),
-                OldDataType = row.Cell(9).GetString(),
-                OldColumnNullable = ParseNullable(row.Cell(10).GetString()),
-                MappingRule = row.Cell(11).GetString(),
-                Notes = row.Cell(12).GetString(),
-                MappingStatus = row.Cell(13).GetString(),
+                NewLookupTable = FormatName(row.Cell(6).GetString()),
+                NewColumnDescription = row.Cell(7).GetString(),
+                OldTableName = FormatName(row.Cell(8).GetString()),
+                OldColumn = FormatName(row.Cell(9).GetString()),
+                OldDataType = row.Cell(10).GetString(),
+                OldColumnNullable = ParseNullable(row.Cell(11).GetString()),
+                OldLookupTable = FormatName(row.Cell(12).GetString()),
+                MappingRule = row.Cell(13).GetString(),
+                Notes = row.Cell(14).GetString(),
+                MappingStatus = row.Cell(15).GetString(),
             };
 
             config.ColumnMappings.Add(mapping);
@@ -130,13 +132,15 @@ public class ExcelMappingService
         sheet.Cell(1, 3).Value = "New DataType";
         sheet.Cell(1, 4).Value = "New Column Nullable";
         sheet.Cell(1, 5).Value = "Has lookup";
-        sheet.Cell(1, 6).Value = "New Column Description";
-        sheet.Cell(1, 7).Value = "Old System Table Name";
-        sheet.Cell(1, 8).Value = "Old Column";
-        sheet.Cell(1, 9).Value = "Old DataType";
-        sheet.Cell(1, 10).Value = "Old Column Nullable";
-        sheet.Cell(1, 11).Value = "Mapping Status";
-        sheet.Cell(1, 12).Value = "Notes";
+        sheet.Cell(1, 6).Value = "New Lookup Table";
+        sheet.Cell(1, 7).Value = "New Column Description";
+        sheet.Cell(1, 8).Value = "Old System Table Name";
+        sheet.Cell(1, 9).Value = "Old Column";
+        sheet.Cell(1, 10).Value = "Old DataType";
+        sheet.Cell(1, 11).Value = "Old Column Nullable";
+        sheet.Cell(1, 12).Value = "Old Lookup Table";
+        sheet.Cell(1, 13).Value = "Mapping Status";
+        sheet.Cell(1, 14).Value = "Notes";
 
         // Sample data
         int row = 2;
@@ -145,16 +149,18 @@ public class ExcelMappingService
         sheet.Cell(row, 3).Value = "INT";
         sheet.Cell(row, 4).Value = "NO";
         sheet.Cell(row, 5).Value = "NO";
-        sheet.Cell(row, 6).Value = "Primary key";
-        sheet.Cell(row, 7).Value = "OldSystem.Person";
-        sheet.Cell(row, 8).Value = "PersonId";
-        sheet.Cell(row, 9).Value = "INT";
-        sheet.Cell(row, 10).Value = "NO";
-        sheet.Cell(row, 11).Value = "Approved";
-        sheet.Cell(row, 12).Value = "Direct mapping";
+        sheet.Cell(row, 6).Value = "";
+        sheet.Cell(row, 7).Value = "Primary key";
+        sheet.Cell(row, 8).Value = "OldSystem.Person";
+        sheet.Cell(row, 9).Value = "PersonId";
+        sheet.Cell(row, 10).Value = "INT";
+        sheet.Cell(row, 11).Value = "NO";
+        sheet.Cell(row, 12).Value = "";
+        sheet.Cell(row, 13).Value = "Approved";
+        sheet.Cell(row, 14).Value = "Direct mapping";
 
         // Format
-        var headerRange = sheet.Range(1, 1, 1, 12);
+        var headerRange = sheet.Range(1, 1, 1, 14);
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
         sheet.Columns().AdjustToContents();
@@ -184,6 +190,7 @@ public class ExcelMappingService
         
         var approved = config.ColumnMappings.Count(m => m.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase));
         var pending = config.ColumnMappings.Count(m => m.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase));
+        var outofscope = config.ColumnMappings.Count(m => m.MappingStatus.Equals("OutOfScope", StringComparison.OrdinalIgnoreCase));
         var lookupsNeeded = config.ColumnMappings.Count(m => m.HasLookup);
         var nullMappings = config.ColumnMappings.Count(m => 
             string.IsNullOrWhiteSpace(m.OldColumn) || 
@@ -193,6 +200,8 @@ public class ExcelMappingService
         report.AppendLine($"  Approved: {approved}");
         if (pending > 0)
             report.AppendLine($"  Pending: {pending}");
+        if (outofscope > 0)
+            report.AppendLine($"  Out Of Scope: {outofscope}");
         if (lookupsNeeded > 0)
             report.AppendLine($"  Requires Lookups: {lookupsNeeded}");
         if (nullMappings > 0)
