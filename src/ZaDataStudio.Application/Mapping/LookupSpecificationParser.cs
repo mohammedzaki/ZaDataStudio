@@ -91,7 +91,8 @@ public class LookupTableSpec
         !string.IsNullOrWhiteSpace(ValueColumnName) &&
         !string.IsNullOrWhiteSpace(TableName) && 
         !string.IsNullOrWhiteSpace(ColumnName) &&
-        !string.IsNullOrWhiteSpace(FilterValue);
+        !string.IsNullOrWhiteSpace(FilterValue) &&
+        !string.IsNullOrWhiteSpace(JoinColumnName);
 
     public override string ToString() => RawSpecification;
 }
