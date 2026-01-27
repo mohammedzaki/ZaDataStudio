@@ -10,12 +10,15 @@ namespace ZaDataStudio.Domain.Entities
         public string ColumnName { get; set; } = string.Empty;
         public string SourceTable { get; set; } = string.Empty;
         public string SourceColumn { get; set; } = string.Empty;
+        public string SourceLookupQuery { get; set; } = string.Empty;
         public int SourceDistinctCount { get; set; }
+        public string DestinationLookupQuery { get; set; } = string.Empty;
         public int DestinationDistinctCount { get; set; }
         public List<string> SourceSampleValues { get; set; } = new();
         public List<string> DestinationSampleValues { get; set; } = new();
         public List<string> MismatchedValues { get; set; } = new();
-        
+        public string AffectedRecordCountQuery { get; set; } = string.Empty;
+
         // New properties for lookup specification support
         public string? OldLookupSpec { get; set; }
         public string? NewLookupSpec { get; set; }

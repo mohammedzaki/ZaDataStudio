@@ -179,6 +179,7 @@ public class MappingComparisonService : IMappingComparisonService
                 
                 analysis.SourceDistinctCount = analysis.SourceSampleValues.Count;
                 analysis.OldLookupSpec = oldLookupSpec.ToString();
+                analysis.SourceLookupQuery = LookupSpecificationParser.GenerateLookupQuery(oldLookupSpec);
             }
 
             // Load destination lookup data
@@ -193,6 +194,7 @@ public class MappingComparisonService : IMappingComparisonService
                 
                 analysis.DestinationDistinctCount = analysis.DestinationSampleValues.Count;
                 analysis.NewLookupSpec = newLookupSpec.ToString();
+                analysis.DestinationLookupQuery = LookupSpecificationParser.GenerateLookupQuery(newLookupSpec);
             }
 
             // Compare values
@@ -237,8 +239,9 @@ public class MappingComparisonService : IMappingComparisonService
 
                 // Store the counts for reporting (you may need to add this property to LookupColumnAnalysis)
                 // analysis.MismatchedValueCounts = valueCounts;
-                // analysis.AffectedRecordCount = totalAffectedRecords;
                 
+                analysis.AffectedRecordCountQuery = countQuery;
+
                 Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
                 foreach (var kvp in valueCounts.OrderByDescending(x => x.Value))
                 {
@@ -286,7 +289,7 @@ public class MappingComparisonService : IMappingComparisonService
         await conn.OpenAsync();
 
         var tableName = FormatTableName(spec.TableName);
-        
+
         // Query to get values filtered by the specification
         var query = $@"
             SELECT DISTINCT TOP 100 [{spec.ValueColumnName}]

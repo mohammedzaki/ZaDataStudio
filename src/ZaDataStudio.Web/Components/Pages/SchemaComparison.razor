@@ -435,6 +435,7 @@
                                                 {
                                                     <p class="text-muted small">Filtered by: <code>@lookup.OldLookupSpec</code></p>
                                                 }
+                                                <p><strong>LookupQuery: </strong> @lookup.SourceLookupQuery</p>
                                                 <p><strong>Distinct Values:</strong> @lookup.SourceDistinctCount</p>
                                                 @if (lookup.SourceSampleValues.Any())
                                                 {
@@ -453,6 +454,7 @@
                                                 {
                                                     <p class="text-muted small">Filtered by: <code>@lookup.NewLookupSpec</code></p>
                                                 }
+                                                <p><strong>LookupQuery: </strong> @lookup.DestinationLookupQuery</p>
                                                 <p><strong>Distinct Values:</strong> @lookup.DestinationDistinctCount</p>
                                                 @if (lookup.DestinationSampleValues.Any())
                                                 {
@@ -468,6 +470,10 @@
                                         </div>
                                         @if (lookup.MismatchedValues.Any())
                                         {
+                                            <div class="alert alert-warning mt-2">
+                                                <strong><span class="bi bi-exclamation-triangle me-2"></span>Mismatched Query: </strong>
+                                                <strong>@lookup.AffectedRecordCountQuery</strong>
+                                            </div>
                                             <div class="alert alert-warning mt-2">
                                                 <strong><span class="bi bi-exclamation-triangle me-2"></span>Mismatched Values:</strong>
                                                 <ul class="mb-0">
