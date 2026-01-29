@@ -46,12 +46,12 @@ public class MappingComparisonService : IMappingComparisonService
                     try
                     {
                         var lookupAnalysis = await AnalyzeLookupColumnWithSpec(columnMapping);
-                        
+
                         lookupAnalysis.SourceTable = columnMapping.OldTableName;
                         lookupAnalysis.SourceColumn = columnMapping.OldColumn;
                         lookupAnalysis.TableName = destTableName;
                         lookupAnalysis.ColumnName = columnMapping.NewColumn;
-                        
+
                         comparisonResult.LookupAnalysis.Add(lookupAnalysis);
                     }
                     catch (Exception ex)
@@ -173,13 +173,12 @@ public class MappingComparisonService : IMappingComparisonService
                 await LoadLookupData(
                     _sourceConnectionString,
                     oldLookupSpec,
-                    columnMapping.OldColumn,
                     analysis.SourceSampleValues,
                     isSource: true);
                 
                 analysis.SourceDistinctCount = analysis.SourceSampleValues.Count;
                 analysis.OldLookupSpec = oldLookupSpec.ToString();
-                analysis.SourceLookupQuery = LookupSpecificationParser.GenerateLookupQuery(oldLookupSpec);
+                analysis.SourceLookupQuery = LookupSpecificationParser.GenerateLookupQuery(oldLookupSpec, columnMapping.OldColumn);
             }
 
             // Load destination lookup data
@@ -188,13 +187,12 @@ public class MappingComparisonService : IMappingComparisonService
                 await LoadLookupData(
                     _destinationConnectionString,
                     newLookupSpec,
-                    columnMapping.NewColumn,
                     analysis.DestinationSampleValues,
                     isSource: false);
                 
                 analysis.DestinationDistinctCount = analysis.DestinationSampleValues.Count;
                 analysis.NewLookupSpec = newLookupSpec.ToString();
-                analysis.DestinationLookupQuery = LookupSpecificationParser.GenerateLookupQuery(newLookupSpec);
+                analysis.DestinationLookupQuery = LookupSpecificationParser.GenerateLookupQuery(newLookupSpec, columnMapping.NewColumn);
             }
 
             // Compare values
@@ -210,16 +208,19 @@ public class MappingComparisonService : IMappingComparisonService
                 using var conn = new SqlConnection(_sourceConnectionString);
                 await conn.OpenAsync();
 
-                var sourceTableName = FormatTableName(columnMapping.OldTableName);
+                var sourceTableName = columnMapping.OldTableName;
                 var sourceColumnName = columnMapping.OldColumn;
-
+                
                 // Build a query to count records with values not in destination, grouped by value
                 var mismatchedValuesList = string.Join(",", analysis.MismatchedValues.Select(v => $"'{v.Replace("'", "''")}'"));
+                var joinStr = @$"LEFT JOIN {oldLookupSpec.TableName} ON {oldLookupSpec.TableName}.{oldLookupSpec.JoinColumnName} = {sourceTableName}.{sourceColumnName}";
+                if (sourceTableName == oldLookupSpec.TableName)
+                    joinStr = "";
                 var countQuery = $@"
                     SELECT [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}], COUNT(*) as RecordCount
                     FROM {sourceTableName}
-                    INNER JOIN {oldLookupSpec.TableName} ON {oldLookupSpec.TableName}.{oldLookupSpec.JoinColumnName} = {sourceTableName}.{sourceColumnName}
-                    WHERE [{oldLookupSpec.ValueColumnName}] IN ({mismatchedValuesList})
+                    {joinStr}
+                    -- WHERE [{oldLookupSpec.ValueColumnName}] IN ({mismatchedValuesList}) OR [{sourceColumnName}] IS NULL
                     GROUP BY [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}]
                     ORDER BY RecordCount DESC";
                 
@@ -231,7 +232,7 @@ public class MappingComparisonService : IMappingComparisonService
                 
                 while (await reader.ReadAsync())
                 {
-                    var value = reader[1]?.ToString() ?? "";
+                    var value = string.IsNullOrEmpty(reader[1]?.ToString()) ? "NULL" : reader[1]?.ToString() ?? "";
                     var count = reader.GetInt32(2);
                     valueCounts[value] = reader[0]?.ToString() + " :> " + count;
                     totalAffectedRecords += count;
@@ -241,10 +242,17 @@ public class MappingComparisonService : IMappingComparisonService
                 // analysis.MismatchedValueCounts = valueCounts;
                 
                 analysis.AffectedRecordCountQuery = countQuery;
+                if (valueCounts.ContainsKey("NULL"))
+                {
+                    analysis.MismatchedValues.Add("NULL");
+                    analysis.SourceSampleValues.Add("NULL");
+                }
 
                 Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
                 foreach (var kvp in valueCounts.OrderByDescending(x => x.Value))
                 {
+                    if (analysis.MismatchedValues.IndexOf(kvp.Key) == -1)
+                        continue;
                     analysis.MismatchedValues[analysis.MismatchedValues.IndexOf(kvp.Key)] = $"'{kvp.Key}' {kvp.Value} records";
                     Console.WriteLine($"  Value '{kvp.Key}': {kvp.Value} records");
                 }
@@ -281,7 +289,6 @@ public class MappingComparisonService : IMappingComparisonService
     private async Task LoadLookupData(
         string connectionString,
         LookupTableSpec spec,
-        string valueColumn,
         List<string> targetList,
         bool isSource)
     {
@@ -294,8 +301,7 @@ public class MappingComparisonService : IMappingComparisonService
         var query = $@"
             SELECT DISTINCT TOP 100 [{spec.ValueColumnName}]
             FROM {tableName}
-            WHERE [{spec.ColumnName}] = {spec.FilterValue}
-              AND [{spec.ValueColumnName}] IS NOT NULL
+            WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}
             ORDER BY [{spec.ValueColumnName}]";
 
         using var cmd = new SqlCommand(query, conn);

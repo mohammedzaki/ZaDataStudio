@@ -18,7 +18,7 @@ public class LookupSpecificationParser
             return null;
 
         // Pattern: [ValueColumnName].[TableName].[ColumnName] = Value ON [JoinColumnName]
-        var pattern = @"\[([^\]]+)\]\.\[([^\]]+)\]\.\[([^\]]+)\]\s*=\s*(.+)( ON )\[([^\]]+)\]";
+        var pattern = @"\[([^\]]+)\]\.\[([^\]]+)\]\.\[([^\]]+)\]\s*(!=|=)\s*(.+)\s+ON\s+\[([^\]]+)\]";
         var match = Regex.Match(specification.Trim(), pattern);
 
         if (match.Success)
@@ -28,7 +28,8 @@ public class LookupSpecificationParser
                 ValueColumnName = match.Groups[1].Value.Trim(),
                 TableName = match.Groups[2].Value.Trim(),
                 ColumnName = match.Groups[3].Value.Trim(),
-                FilterValue = match.Groups[4].Value.Trim(),
+                FilterOperator = match.Groups[4].Value.Trim(),
+                FilterValue = match.Groups[5].Value.Trim(),
                 JoinColumnName = match.Groups[6].Value.Trim(),
                 RawSpecification = specification
             };
@@ -40,10 +41,10 @@ public class LookupSpecificationParser
     /// <summary>
     /// Generate SQL query to get values from lookup table
     /// </summary>
-    public static string GenerateLookupQuery(LookupTableSpec spec, string? additionalWhere = null)
+    public static string GenerateLookupQuery(LookupTableSpec spec, string valueColumn, string? additionalWhere = null)
     {
         var tableName = FormatTableName(spec.TableName);
-        var query = $"SELECT * FROM {tableName} WHERE [{spec.ColumnName}] = {spec.FilterValue}";
+        var query = $"SELECT * FROM {tableName} WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}";
         
         if (!string.IsNullOrWhiteSpace(additionalWhere))
         {
@@ -83,6 +84,7 @@ public class LookupTableSpec
     public string ValueColumnName { get; set; } = string.Empty;
     public string TableName { get; set; } = string.Empty;
     public string ColumnName { get; set; } = string.Empty;
+    public string FilterOperator { get; set; } = string.Empty;
     public string FilterValue { get; set; } = string.Empty;
     public string JoinColumnName { get; set; } = string.Empty;
     public string RawSpecification { get; set; } = string.Empty;
@@ -91,6 +93,7 @@ public class LookupTableSpec
         !string.IsNullOrWhiteSpace(ValueColumnName) &&
         !string.IsNullOrWhiteSpace(TableName) && 
         !string.IsNullOrWhiteSpace(ColumnName) &&
+        !string.IsNullOrWhiteSpace(FilterOperator) &&
         !string.IsNullOrWhiteSpace(FilterValue) &&
         !string.IsNullOrWhiteSpace(JoinColumnName);
 

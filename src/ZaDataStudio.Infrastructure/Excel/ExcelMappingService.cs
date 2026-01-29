@@ -255,6 +255,365 @@ public class ExcelMappingService
         
         return report.ToString();
     }
+
+    /// <summary>
+    /// Generate Excel file with analysis results
+    /// Includes main mapping sheet with AnalysisResult column + separate tabs for each lookup analysis
+    /// </summary>
+    public byte[] GenerateAnalysisExcel(
+        DataMappingConfiguration config, 
+        MappingComparisonResult analysisResult,
+        List<DatatypeComparison> datatypeComparisons)
+    {
+        using var workbook = new XLWorkbook();
+        
+        // 1. Create main DataMapping sheet with analysis results
+        var mainSheet = workbook.Worksheets.Add("DataMapping");
+        GenerateMainMappingSheet(mainSheet, config, analysisResult, datatypeComparisons);
+        
+        // 2. Create separate tabs for each lookup analysis
+        foreach (var lookupAnalysis in analysisResult.LookupAnalysis)
+        {
+            var sheetName = SanitizeSheetName($"{lookupAnalysis.ColumnName}_{lookupAnalysis.SourceTable}");
+            var lookupSheet = workbook.Worksheets.Add(sheetName);
+            GenerateLookupAnalysisSheet(lookupSheet, lookupAnalysis);
+        }
+        
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private void GenerateMainMappingSheet(
+        IXLWorksheet sheet, 
+        DataMappingConfiguration config,
+        MappingComparisonResult analysisResult,
+        List<DatatypeComparison> datatypeComparisons)
+    {
+        // Headers (same as template + AnalysisResult column)
+        sheet.Cell(1, 1).Value = "New Table Name";
+        sheet.Cell(1, 2).Value = "New Column";
+        sheet.Cell(1, 3).Value = "New DataType";
+        sheet.Cell(1, 4).Value = "New Column Nullable";
+        sheet.Cell(1, 5).Value = "Has lookup";
+        sheet.Cell(1, 6).Value = "New Lookup Table";
+        sheet.Cell(1, 7).Value = "New Column Description";
+        sheet.Cell(1, 8).Value = "Old System Table Name";
+        sheet.Cell(1, 9).Value = "Old Column";
+        sheet.Cell(1, 10).Value = "Old DataType";
+        sheet.Cell(1, 11).Value = "Old Column Nullable";
+        sheet.Cell(1, 12).Value = "Old Lookup Table";
+        sheet.Cell(1, 13).Value = "Mapping Rule";
+        sheet.Cell(1, 14).Value = "Notes";
+        sheet.Cell(1, 15).Value = "Mapping Status";
+        sheet.Cell(1, 16).Value = "AnalysisResult";  // New column
+
+        // Format header
+        var headerRange = sheet.Range(1, 1, 1, 16);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
+
+        // Populate data rows
+        int row = 2;
+        foreach (var mapping in config.ColumnMappings)
+        {
+            sheet.Cell(row, 1).Value = mapping.NewTableName;
+            sheet.Cell(row, 2).Value = mapping.NewColumn;
+            sheet.Cell(row, 3).Value = mapping.NewDataType;
+            sheet.Cell(row, 4).Value = mapping.NewColumnNullable.HasValue 
+                ? (mapping.NewColumnNullable.Value ? "YES" : "NO") 
+                : "";
+            sheet.Cell(row, 5).Value = mapping.HasLookup ? "YES" : "NO";
+            sheet.Cell(row, 6).Value = mapping.NewLookupTable;
+            sheet.Cell(row, 7).Value = mapping.NewColumnDescription;
+            sheet.Cell(row, 8).Value = mapping.OldTableName;
+            sheet.Cell(row, 9).Value = mapping.OldColumn;
+            sheet.Cell(row, 10).Value = mapping.OldDataType;
+            sheet.Cell(row, 11).Value = mapping.OldColumnNullable.HasValue 
+                ? (mapping.OldColumnNullable.Value ? "YES" : "NO") 
+                : "";
+            sheet.Cell(row, 12).Value = mapping.OldLookupTable;
+            sheet.Cell(row, 13).Value = mapping.MappingRule;
+            sheet.Cell(row, 14).Value = mapping.Notes;
+            sheet.Cell(row, 15).Value = mapping.MappingStatus;
+
+            // Generate analysis result
+            var analysisText = GenerateAnalysisResult(mapping, analysisResult, datatypeComparisons);
+            sheet.Cell(row, 16).Value = analysisText;
+
+            // Color code the analysis result
+            if (analysisText.Contains("✓ OK"))
+            {
+                sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightGreen;
+            }
+            else if (analysisText.Contains("⚠"))
+            {
+                sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.Yellow;
+            }
+            else if (analysisText.Contains("✗"))
+            {
+                sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightPink;
+            }
+
+            row++;
+        }
+
+        // Auto-fit columns
+        sheet.Columns().AdjustToContents();
+        sheet.SheetView.FreezeRows(1);
+    }
+
+    private string GenerateAnalysisResult(
+        DataColumnMapping mapping,
+        MappingComparisonResult analysisResult,
+        List<DatatypeComparison> datatypeComparisons)
+    {
+        var results = new List<string>();
+
+        // Check lookup analysis
+        var lookupAnalysis = analysisResult.LookupAnalysis.FirstOrDefault(l => 
+            l.TableName == mapping.NewTableName && l.ColumnName == mapping.NewColumn);
+
+        if (lookupAnalysis != null)
+        {
+            if (lookupAnalysis.MismatchedValues.Any())
+            {
+                results.Add($"⚠ Lookup: {lookupAnalysis.MismatchedValues.Count} mismatched value(s)");
+            }
+            else if (lookupAnalysis.SourceSampleValues.Any() || lookupAnalysis.DestinationSampleValues.Any())
+            {
+                results.Add("✓ Lookup: Values match");
+            }
+
+            if (lookupAnalysis.LookupFilterMismatch)
+            {
+                results.Add("⚠ Filter mismatch detected");
+            }
+        }
+
+        // Check datatype comparison
+        var datatypeComp = datatypeComparisons?.FirstOrDefault(d => 
+            d.DestinationTable == mapping.NewTableName && d.DestinationColumn == mapping.NewColumn);
+
+        if (datatypeComp != null)
+        {
+            if (datatypeComp.HasIssues)
+            {
+                results.Add($"⚠ Type: {string.Join("; ", datatypeComp.Issues.Take(2))}");
+            }
+            else
+            {
+                results.Add("✓ Type: Compatible");
+            }
+        }
+
+        // Check for null mappings
+        if (string.IsNullOrWhiteSpace(mapping.OldColumn) || 
+            mapping.OldColumn.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+        {
+            if (mapping.NewColumnNullable == false)
+            {
+                results.Add("✗ NULL mapping for NOT NULL column");
+            }
+            else
+            {
+                results.Add("⚠ NULL mapping (will insert NULL)");
+            }
+        }
+
+        return results.Any() ? string.Join(" | ", results) : "✓ OK";
+    }
+
+    private void GenerateLookupAnalysisSheet(IXLWorksheet sheet, LookupColumnAnalysis lookup)
+    {
+        // Sheet title
+        sheet.Cell(1, 1).Value = "Lookup Analysis";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+
+        // Summary information
+        int row = 2;
+        sheet.Cell(row, 1).Value = "Field:";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 2).Value = $"{lookup.TableName}.{lookup.ColumnName}";
+        row++;
+
+        sheet.Cell(row, 1).Value = "Source:";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 2).Value = $"{lookup.SourceTable}.{lookup.SourceColumn}";
+        row++;
+
+        if (!string.IsNullOrEmpty(lookup.OldLookupSpec))
+        {
+            sheet.Cell(row, 1).Value = "Old Lookup Spec:";
+            sheet.Cell(row, 1).Style.Font.Bold = true;
+            sheet.Cell(row, 2).Value = lookup.OldLookupSpec;
+            row++;
+        }
+
+        if (!string.IsNullOrEmpty(lookup.NewLookupSpec))
+        {
+            sheet.Cell(row, 1).Value = "New Lookup Spec:";
+            sheet.Cell(row, 1).Style.Font.Bold = true;
+            sheet.Cell(row, 2).Value = lookup.NewLookupSpec;
+            row++;
+        }
+
+        if (lookup.LookupFilterMismatch)
+        {
+            sheet.Cell(row, 1).Value = "⚠ Filter Mismatch:";
+            sheet.Cell(row, 1).Style.Font.Bold = true;
+            sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.Yellow;
+            sheet.Cell(row, 2).Value = lookup.LookupFilterMessage;
+            sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.Yellow;
+            row++;
+        }
+
+        row++; // Blank row
+
+        // Destination Lookup Values Section
+        sheet.Cell(row, 1).Value = "DESTINATION LOOKUP VALUES";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
+        sheet.Range(row, 1, row, 3).Merge();
+        row++;
+
+        sheet.Cell(row, 1).Value = "Value";
+        sheet.Cell(row, 2).Value = "Status";
+        sheet.Cell(row, 3).Value = "Notes";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+
+        int destStartRow = row;
+        if (lookup.DestinationSampleValues.Any())
+        {
+            foreach (var value in lookup.DestinationSampleValues)
+            {
+                sheet.Cell(row, 1).Value = value;
+                sheet.Cell(row, 2).Value = "✓ In Destination";
+                sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                row++;
+            }
+
+            if (lookup.DestinationDistinctCount > lookup.DestinationSampleValues.Count)
+            {
+                sheet.Cell(row, 1).Value = $"... and {lookup.DestinationDistinctCount - lookup.DestinationSampleValues.Count} more";
+                sheet.Cell(row, 1).Style.Font.Italic = true;
+                row++;
+            }
+        }
+        else
+        {
+            sheet.Cell(row, 1).Value = "No destination values found";
+            sheet.Cell(row, 1).Style.Font.Italic = true;
+            row++;
+        }
+
+        row++; // Blank row
+
+        // Source Lookup Values Section
+        sheet.Cell(row, 1).Value = "SOURCE LOOKUP VALUES";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Range(row, 1, row, 3).Merge();
+        row++;
+
+        sheet.Cell(row, 1).Value = "Value";
+        sheet.Cell(row, 2).Value = "Status";
+        sheet.Cell(row, 3).Value = "Notes";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+
+        int sourceStartRow = row;
+        if (lookup.SourceSampleValues.Any())
+        {
+            var destValuesSet = lookup.DestinationSampleValues.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var value in lookup.SourceSampleValues)
+            {
+                sheet.Cell(row, 1).Value = value;
+                
+                if (destValuesSet.Contains(value))
+                {
+                    sheet.Cell(row, 2).Value = "✓ Match Found";
+                    sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                }
+                else
+                {
+                    sheet.Cell(row, 2).Value = "✗ NOT in Destination";
+                    sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightPink;
+                    sheet.Cell(row, 3).Value = "⚠ Needs mapping or insert";
+                }
+                
+                row++;
+            }
+
+            if (lookup.SourceDistinctCount > lookup.SourceSampleValues.Count)
+            {
+                sheet.Cell(row, 1).Value = $"... and {lookup.SourceDistinctCount - lookup.SourceSampleValues.Count} more";
+                sheet.Cell(row, 1).Style.Font.Italic = true;
+                row++;
+            }
+        }
+        else
+        {
+            sheet.Cell(row, 1).Value = "No source values found";
+            sheet.Cell(row, 1).Style.Font.Italic = true;
+            row++;
+        }
+
+        row += 2; // Blank rows
+
+        // Summary statistics
+        sheet.Cell(row, 1).Value = "SUMMARY";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        sheet.Range(row, 1, row, 2).Merge();
+        row++;
+
+        sheet.Cell(row, 1).Value = "Total Destination Values:";
+        sheet.Cell(row, 2).Value = lookup.DestinationDistinctCount;
+        row++;
+
+        sheet.Cell(row, 1).Value = "Total Source Values:";
+        sheet.Cell(row, 2).Value = lookup.SourceDistinctCount;
+        row++;
+
+        sheet.Cell(row, 1).Value = "Mismatched Values:";
+        sheet.Cell(row, 2).Value = lookup.MismatchedValues.Count;
+        if (lookup.MismatchedValues.Any())
+        {
+            sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.Yellow;
+        }
+        row++;
+
+        // Auto-fit columns
+        sheet.Columns().AdjustToContents();
+    }
+
+    private string SanitizeSheetName(string name)
+    {
+        // Excel sheet names can't contain: \ / * ? : [ ]
+        // and must be 31 characters or less
+        var sanitized = name
+            .Replace("\\", "_")
+            .Replace("/", "_")
+            .Replace("*", "_")
+            .Replace("?", "_")
+            .Replace(":", "_")
+            .Replace("[", "_")
+            .Replace("]", "_");
+
+        if (sanitized.Length > 31)
+        {
+            sanitized = sanitized.Substring(0, 31);
+        }
+
+        return sanitized;
+    }
 }
+
 
 

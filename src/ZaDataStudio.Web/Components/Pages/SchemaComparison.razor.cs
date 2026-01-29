@@ -1092,6 +1092,37 @@ public partial class SchemaComparison : ComponentBase
         await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", excelGeneratedSQL);
     }
 
+    private async Task DownloadAnalysisExcel()
+    {
+        if (excelMappingConfig == null || excelComparisonResult == null)
+        {
+            errorMessage = "No analysis results available to export.";
+            return;
+        }
+
+        try
+        {
+            var excelBytes = ExcelMappingService.GenerateAnalysisExcel(
+                excelMappingConfig, 
+                excelComparisonResult,
+                excelComparisonResult.DatatypeComparisons);
+
+            var fileName = $"MappingAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            var base64 = Convert.ToBase64String(excelBytes);
+
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                const link = document.createElement('a');
+                link.download = '{fileName}';
+                link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}';
+                link.click();
+            ");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error exporting analysis to Excel: {ex.Message}";
+        }
+    }
+
     // Manual Mapping SQL Generation Methods
     private void GenerateManualMappingSQL()
     {

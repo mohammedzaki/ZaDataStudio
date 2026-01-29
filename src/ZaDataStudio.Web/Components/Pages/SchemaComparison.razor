@@ -342,6 +342,13 @@
                                 <span>Analyze Excel Mappings</span>
                             }
                         </button>
+                        @if (excelComparisonResult != null)
+                        {
+                            <button class="btn btn-sm btn-info ms-2" @onclick="DownloadAnalysisExcel">
+                                <span class="bi bi-file-earmark-spreadsheet me-1"></span>
+                                Export Analysis to Excel
+                            </button>
+                        }
                     </div>
                 </div>
             }
@@ -477,13 +484,13 @@
                                             <div class="alert alert-warning mt-2">
                                                 <strong><span class="bi bi-exclamation-triangle me-2"></span>Mismatched Values:</strong>
                                                 <ul class="mb-0">
-                                                    @foreach (var mismatch in lookup.MismatchedValues.Take(10))
+                                                    @foreach (var mismatch in lookup.MismatchedValues.Take(50))
                                                     {
                                                         <li>@mismatch</li>
                                                     }
-                                                    @if (lookup.MismatchedValues.Count > 10)
+                                                    @if (lookup.MismatchedValues.Count > 50)
                                                     {
-                                                        <li class="text-muted">... and @(lookup.MismatchedValues.Count - 10) more</li>
+                                                        <li class="text-muted">... and @(lookup.MismatchedValues.Count - 50) more</li>
                                                     }
                                                 </ul>
                                             </div>
