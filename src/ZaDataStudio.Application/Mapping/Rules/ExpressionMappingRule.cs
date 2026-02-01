@@ -16,14 +16,14 @@ public class ExpressionMappingRule : IMappingRule
             return false;
 
         // Check for SQL expression indicators
-        return mapping.OldColumn.Contains("(") ||
-               mapping.OldColumn.Contains("+") ||
-               mapping.OldColumn.Contains("CASE") ||
-               mapping.OldColumn.Contains("CAST") ||
-               mapping.OldColumn.Contains("CONVERT") ||
-               mapping.OldColumn.Contains("CONCAT") ||
-               mapping.OldColumn.Contains("ISNULL") ||
-               mapping.OldColumn.Contains("COALESCE");
+        return mapping.MappingRule.Contains("(") ||
+               mapping.MappingRule.Contains("+") ||
+               mapping.MappingRule.Contains("CASE") ||
+               mapping.MappingRule.Contains("CAST") ||
+               mapping.MappingRule.Contains("CONVERT") ||
+               mapping.MappingRule.Contains("CONCAT") ||
+               mapping.MappingRule.Contains("ISNULL") ||
+               mapping.MappingRule.Contains("COALESCE");
     }
 
     public MappingResult Apply(DataColumnMapping mapping, MappingContext context)

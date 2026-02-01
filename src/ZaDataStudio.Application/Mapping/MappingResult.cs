@@ -9,6 +9,7 @@ namespace ZaDataStudio.Application.Mapping;
 /// </summary>
 public class MappingResult
 {
+    public string FullSqlExpression { get; set; } = string.Empty;
     public string SqlExpression { get; set; } = string.Empty;
     public bool HasWarning { get; set; }
     public string Warning { get; set; } = string.Empty;

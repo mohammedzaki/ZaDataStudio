@@ -25,10 +25,11 @@ public class ConditionalMappingRule : IMappingRule
     public MappingResult Apply(DataColumnMapping mapping, MappingContext context)
     {
         var expression = ConvertToCase(mapping.MappingRule, mapping.OldTableName);
-        
+        var fullExpression = $"SELECT DISTINCT {expression} AS {mapping.NewColumn}, {mapping.OldColumn} FROM {mapping.OldTableName} "; // In a real scenario, this might include table aliases or schema
         return new MappingResult
         {
             SqlExpression = expression,
+            FullSqlExpression = fullExpression,
             HasWarning = !expression.Contains("END"),
             Warning = !expression.Contains("END") ? "Conditional expression may be incomplete" : string.Empty
         };

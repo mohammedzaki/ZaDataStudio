@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using ZaDataStudio.Domain.Entities;
@@ -10,6 +12,12 @@ public class MappingComparisonService : IMappingComparisonService
 {
     private string _sourceConnectionString;
     private string _destinationConnectionString;
+    private MappingRuleEngine _ruleEngine;
+
+    public MappingComparisonService()
+    {
+        _ruleEngine = new MappingRuleEngine();
+    }
 
     public async Task<MappingComparisonResult> CompareMappingsAsync(
         DataMappingConfiguration sourceMapping,
@@ -39,7 +47,7 @@ public class MappingComparisonService : IMappingComparisonService
                     continue;
 
                 // 1. Check lookup columns (with new format support)
-                if (columnMapping.HasLookup || 
+                if (columnMapping.HasLookup ||
                     !string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) ||
                     !string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
                 {
@@ -57,6 +65,23 @@ public class MappingComparisonService : IMappingComparisonService
                     catch (Exception ex)
                     {
                         Console.WriteLine($"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
+                {
+                    // If there's a mapping rule, try to analyze as lookup
+                    try
+                    {
+                        var lookupAnalysis = await AnalyzeLookupColumn(columnMapping);
+                        lookupAnalysis.SourceTable = columnMapping.OldTableName;
+                        lookupAnalysis.SourceColumn = columnMapping.OldColumn;
+                        lookupAnalysis.TableName = destTableName;
+                        lookupAnalysis.ColumnName = columnMapping.NewColumn;
+                        comparisonResult.LookupAnalysis.Add(lookupAnalysis);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error analyzing mapping rule lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
                     }
                 }
 
@@ -83,9 +108,7 @@ public class MappingComparisonService : IMappingComparisonService
         return comparisonResult;
     }
 
-    private async Task<LookupColumnAnalysis> AnalyzeLookupColumn(
-        string sourceTable, string sourceColumn,
-        string destTable, string destColumn)
+    private async Task<LookupColumnAnalysis> AnalyzeLookupColumn(DataColumnMapping columnMapping)
     {
         var analysis = new LookupColumnAnalysis();
 
@@ -93,15 +116,20 @@ public class MappingComparisonService : IMappingComparisonService
         using (var sourceConn = new SqlConnection(_sourceConnectionString))
         {
             await sourceConn.OpenAsync();
-
-            // Get distinct values from source
-            var query = $@"
-                SELECT DISTINCT TOP 100 [{sourceColumn}] 
-                FROM {sourceTable} 
-                WHERE [{sourceColumn}] IS NOT NULL 
-                ORDER BY [{sourceColumn}]";
-
-            using (var cmd = new SqlCommand(query, sourceConn))
+            var sqlExpression = "";
+            if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
+            {
+                sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
+            }
+            if (string.IsNullOrWhiteSpace(sqlExpression))
+            {
+                // Get distinct values from source
+                sqlExpression = $@"
+                SELECT DISTINCT [{columnMapping.OldColumn}] 
+                FROM {columnMapping.OldTableName} 
+                ORDER BY [{columnMapping.OldColumn}]";
+            }
+            using (var cmd = new SqlCommand(sqlExpression, sourceConn))
             {
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -111,9 +139,10 @@ public class MappingComparisonService : IMappingComparisonService
             } // Close reader before next query
 
             // Get distinct count
-            var countQuery = $"SELECT COUNT(DISTINCT [{sourceColumn}]) FROM {sourceTable}";
+            var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
             using var countCmd = new SqlCommand(countQuery, sourceConn);
             analysis.SourceDistinctCount = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
+            analysis.SourceLookupQuery = sqlExpression;
         }
 
         // Load destination data
@@ -122,13 +151,12 @@ public class MappingComparisonService : IMappingComparisonService
             await destConn.OpenAsync();
 
             // Get distinct values from destination
-            var query = $@"
-                SELECT DISTINCT TOP 100 [{destColumn}] 
-                FROM {destTable} 
-                WHERE [{destColumn}] IS NOT NULL 
-                ORDER BY [{destColumn}]";
+            var sqlExpression = $@"
+                SELECT DISTINCT [{columnMapping.NewColumn}] 
+                FROM {columnMapping.NewTableName} 
+                ORDER BY [{columnMapping.NewColumn}]";
 
-            using (var cmd = new SqlCommand(query, destConn))
+            using (var cmd = new SqlCommand(sqlExpression, destConn))
             {
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -138,7 +166,7 @@ public class MappingComparisonService : IMappingComparisonService
             } // Close reader before next query
 
             // Get distinct count
-            var countQuery = $"SELECT COUNT(DISTINCT [{destColumn}]) FROM {destTable}";
+            var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
             using var countCmd = new SqlCommand(countQuery, destConn);
             analysis.DestinationDistinctCount = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
         }
@@ -168,31 +196,31 @@ public class MappingComparisonService : IMappingComparisonService
         if (oldLookupSpec != null || newLookupSpec != null)
         {
             // Load source lookup data
-            if (oldLookupSpec != null)
-            {
-                await LoadLookupData(
+            var sourceLoaded = await LoadLookupData(
                     _sourceConnectionString,
+                    columnMapping,
                     oldLookupSpec,
                     analysis.SourceSampleValues,
                     isSource: true);
-                
+            if (sourceLoaded.success)
+            {
                 analysis.SourceDistinctCount = analysis.SourceSampleValues.Count;
-                analysis.OldLookupSpec = oldLookupSpec.ToString();
-                analysis.SourceLookupQuery = LookupSpecificationParser.GenerateLookupQuery(oldLookupSpec, columnMapping.OldColumn);
+                analysis.OldLookupSpec = oldLookupSpec?.ToString();
+                analysis.SourceLookupQuery = sourceLoaded.lookupQuery;
             }
 
             // Load destination lookup data
-            if (newLookupSpec != null)
-            {
-                await LoadLookupData(
+            var destLoaded = await LoadLookupData(
                     _destinationConnectionString,
+                    columnMapping,
                     newLookupSpec,
                     analysis.DestinationSampleValues,
                     isSource: false);
-                
+            if (destLoaded.success)
+            {
                 analysis.DestinationDistinctCount = analysis.DestinationSampleValues.Count;
-                analysis.NewLookupSpec = newLookupSpec.ToString();
-                analysis.DestinationLookupQuery = LookupSpecificationParser.GenerateLookupQuery(newLookupSpec, columnMapping.NewColumn);
+                analysis.NewLookupSpec = newLookupSpec?.ToString();
+                analysis.DestinationLookupQuery = destLoaded.lookupQuery;
             }
 
             // Compare values
@@ -200,63 +228,6 @@ public class MappingComparisonService : IMappingComparisonService
             analysis.MismatchedValues = analysis.SourceSampleValues
                 .Where(v => !destValuesSet.Contains(v))
                 .ToList();
-
-            // Count mismatches
-            if (analysis.MismatchedValues.Any() && oldLookupSpec != null)
-            {
-                // Query the actual count of records in the source for each mismatched value
-                using var conn = new SqlConnection(_sourceConnectionString);
-                await conn.OpenAsync();
-
-                var sourceTableName = columnMapping.OldTableName;
-                var sourceColumnName = columnMapping.OldColumn;
-                
-                // Build a query to count records with values not in destination, grouped by value
-                var mismatchedValuesList = string.Join(",", analysis.MismatchedValues.Select(v => $"'{v.Replace("'", "''")}'"));
-                var joinStr = @$"LEFT JOIN {oldLookupSpec.TableName} ON {oldLookupSpec.TableName}.{oldLookupSpec.JoinColumnName} = {sourceTableName}.{sourceColumnName}";
-                if (sourceTableName == oldLookupSpec.TableName)
-                    joinStr = "";
-                var countQuery = $@"
-                    SELECT [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}], COUNT(*) as RecordCount
-                    FROM {sourceTableName}
-                    {joinStr}
-                    -- WHERE [{oldLookupSpec.ValueColumnName}] IN ({mismatchedValuesList}) OR [{sourceColumnName}] IS NULL
-                    GROUP BY [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}]
-                    ORDER BY RecordCount DESC";
-                
-                using var countCmd = new SqlCommand(countQuery, conn);
-                using var reader = await countCmd.ExecuteReaderAsync();
-                
-                var valueCounts = new Dictionary<string, string>();
-                var totalAffectedRecords = 0;
-                
-                while (await reader.ReadAsync())
-                {
-                    var value = string.IsNullOrEmpty(reader[1]?.ToString()) ? "NULL" : reader[1]?.ToString() ?? "";
-                    var count = reader.GetInt32(2);
-                    valueCounts[value] = reader[0]?.ToString() + " :> " + count;
-                    totalAffectedRecords += count;
-                }
-
-                // Store the counts for reporting (you may need to add this property to LookupColumnAnalysis)
-                // analysis.MismatchedValueCounts = valueCounts;
-                
-                analysis.AffectedRecordCountQuery = countQuery;
-                if (valueCounts.ContainsKey("NULL"))
-                {
-                    analysis.MismatchedValues.Add("NULL");
-                    analysis.SourceSampleValues.Add("NULL");
-                }
-
-                Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
-                foreach (var kvp in valueCounts.OrderByDescending(x => x.Value))
-                {
-                    if (analysis.MismatchedValues.IndexOf(kvp.Key) == -1)
-                        continue;
-                    analysis.MismatchedValues[analysis.MismatchedValues.IndexOf(kvp.Key)] = $"'{kvp.Key}' {kvp.Value} records";
-                    Console.WriteLine($"  Value '{kvp.Key}': {kvp.Value} records");
-                }
-            }
 
             // Check if filter values match
             if (oldLookupSpec != null && newLookupSpec != null)
@@ -273,11 +244,75 @@ public class MappingComparisonService : IMappingComparisonService
         else
         {
             // Fallback to standard lookup analysis (without specification)
-            return await AnalyzeLookupColumn(
-                columnMapping.OldTableName,
-                columnMapping.OldColumn,
-                columnMapping.NewTableName,
-                columnMapping.NewColumn);
+            analysis = await AnalyzeLookupColumn(columnMapping);
+        }
+
+        // Count mismatches
+        if (analysis.MismatchedValues.Any())
+        {
+            var countQuery = "";
+            var sourceTableName = columnMapping.OldTableName;
+            var sourceColumnName = columnMapping.OldColumn;
+            // Build a query to count records with values not in destination, grouped by value
+            var mismatchedValuesList = string.Join(",", analysis.MismatchedValues.Select(v => $"'{v.Replace("'", "''")}'"));
+
+            if (oldLookupSpec != null)
+            {
+                var joinStr = @$"LEFT JOIN {oldLookupSpec.TableName} ON {oldLookupSpec.TableName}.{oldLookupSpec.JoinColumnName} = {sourceTableName}.{sourceColumnName}";
+                if (sourceTableName == oldLookupSpec.TableName)
+                    joinStr = "";
+                countQuery = $@"
+                    SELECT [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}], COUNT(*) as RecordCount
+                    FROM {sourceTableName}
+                    {joinStr}
+                    GROUP BY [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}]
+                    ORDER BY RecordCount DESC";
+            }
+            else 
+            {
+                countQuery = $@"
+                    SELECT [{sourceColumnName}], [{sourceColumnName}], COUNT(*) as RecordCount
+                    FROM {sourceTableName}
+                    GROUP BY [{sourceColumnName}], [{sourceColumnName}]
+                    ORDER BY RecordCount DESC";
+            }
+
+            // Query the actual count of records in the source for each mismatched value
+            using var conn = new SqlConnection(_sourceConnectionString);
+            await conn.OpenAsync();
+
+            using var countCmd = new SqlCommand(countQuery, conn);
+            using var reader = await countCmd.ExecuteReaderAsync();
+
+            var valueCounts = new Dictionary<string, string>();
+            var totalAffectedRecords = 0;
+
+            while (await reader.ReadAsync())
+            {
+                var value = string.IsNullOrEmpty(reader[1]?.ToString()) ? "NULL" : reader[1]?.ToString() ?? "";
+                var count = reader.GetInt32(2);
+                valueCounts[value] = reader[0]?.ToString() + " :> " + count;
+                totalAffectedRecords += count;
+            }
+
+            // Store the counts for reporting (you may need to add this property to LookupColumnAnalysis)
+            // analysis.MismatchedValueCounts = valueCounts;
+
+            analysis.AffectedRecordCountQuery = countQuery;
+            if (valueCounts.ContainsKey("NULL"))
+            {
+                analysis.MismatchedValues.Add("NULL");
+                analysis.SourceSampleValues.Add("NULL");
+            }
+
+            Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
+            foreach (var kvp in valueCounts.OrderByDescending(x => x.Value))
+            {
+                if (analysis.MismatchedValues.IndexOf(kvp.Key) == -1)
+                    continue;
+                analysis.MismatchedValues[analysis.MismatchedValues.IndexOf(kvp.Key)] = $"'{kvp.Key}' {kvp.Value} records";
+                Console.WriteLine($"  Value '{kvp.Key}': {kvp.Value} records");
+            }
         }
 
         return analysis;
@@ -286,30 +321,48 @@ public class MappingComparisonService : IMappingComparisonService
     /// <summary>
     /// Load lookup data based on specification
     /// </summary>
-    private async Task LoadLookupData(
+    private async Task<(bool success, string lookupQuery)> LoadLookupData(
         string connectionString,
-        LookupTableSpec spec,
+        DataColumnMapping columnMapping,
+        LookupTableSpec? spec,
         List<string> targetList,
         bool isSource)
     {
-        using var conn = new SqlConnection(connectionString);
-        await conn.OpenAsync();
+        async Task<bool> ExecuteQuery(string sql) 
+        { 
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            
+            while (await reader.ReadAsync())
+            {
+                targetList.Add(reader[0]?.ToString() ?? "");
+            }
+            return true;
+        }
+        if (spec == null)
+        {
+            var sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
+            if (string.IsNullOrWhiteSpace(sqlExpression))
+                sqlExpression = $@"
+                    SELECT DISTINCT [{columnMapping.OldColumn}]
+                    FROM {FormatTableName(columnMapping.OldTableName)}
+                    ORDER BY [{columnMapping.OldColumn}]";
 
-        var tableName = FormatTableName(spec.TableName);
-
-        // Query to get values filtered by the specification
-        var query = $@"
+            return (await ExecuteQuery(sqlExpression), sqlExpression);
+        }
+        else
+        {
+            var tableName = FormatTableName(spec.TableName);
+            // Query to get values filtered by the specification
+            var sqlExpression = $@"
             SELECT DISTINCT TOP 100 [{spec.ValueColumnName}]
             FROM {tableName}
             WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}
             ORDER BY [{spec.ValueColumnName}]";
-
-        using var cmd = new SqlCommand(query, conn);
-        using var reader = await cmd.ExecuteReaderAsync();
-        
-        while (await reader.ReadAsync())
-        {
-            targetList.Add(reader[0]?.ToString() ?? "");
+            var lookupQuery = LookupSpecificationParser.GenerateLookupQuery(spec);
+            return (await ExecuteQuery(sqlExpression), lookupQuery);
         }
     }
 

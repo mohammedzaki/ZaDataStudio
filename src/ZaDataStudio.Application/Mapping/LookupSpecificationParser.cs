@@ -41,7 +41,7 @@ public class LookupSpecificationParser
     /// <summary>
     /// Generate SQL query to get values from lookup table
     /// </summary>
-    public static string GenerateLookupQuery(LookupTableSpec spec, string valueColumn, string? additionalWhere = null)
+    public static string GenerateLookupQuery(LookupTableSpec spec, string? valueColumn = null, string? additionalWhere = null)
     {
         var tableName = FormatTableName(spec.TableName);
         var query = $"SELECT * FROM {tableName} WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}";

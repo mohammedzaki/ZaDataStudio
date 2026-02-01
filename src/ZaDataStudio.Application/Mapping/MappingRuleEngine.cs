@@ -19,7 +19,7 @@ public class MappingRuleEngine
         [
             new NullMappingRule(),
             new ExpressionMappingRule(),
-            new LookupMappingRule(),
+            //new LookupMappingRule(),
             new ConcatenationMappingRule(),
             new ConditionalMappingRule(),
             new TypeConversionMappingRule(),
@@ -48,6 +48,22 @@ public class MappingRuleEngine
             HasWarning = true,
             Warning = $"No rule could handle mapping for {mapping.NewColumn}"
         };
+    }
+
+    /// <summary>
+    /// Process a column mapping and generate appropriate SQL expression
+    /// </summary>
+    public string GenerateMappingRuleSQL(DataColumnMapping mapping)
+    {
+        try 
+        {
+            var mappingResult = ProcessMapping(mapping, new MappingContext());
+            return mappingResult.FullSqlExpression;
+        }
+        catch (Exception ex)
+        {
+            return $"-- ERROR generating mapping rule SQL for {mapping.NewColumn}: {ex.Message}";
+        }
     }
 
     /// <summary>
