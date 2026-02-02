@@ -54,6 +54,7 @@ public partial class SchemaComparison : ComponentBase
     private string excelLoadMessage = string.Empty;
     private bool isComparingExcelMappings = false;
     private bool isUploadingExcel = false;
+    private bool isExportingAnalysisExcel = false;
     private MappingComparisonResult? excelComparisonResult;
     private IMappingComparisonService MappingComparisonService;
 
@@ -1100,12 +1101,17 @@ public partial class SchemaComparison : ComponentBase
             return;
         }
 
+        isExportingAnalysisExcel = true;
+        errorMessage = string.Empty;
+        StateHasChanged(); // Force UI update to show spinner
+
         try
         {
-            var excelBytes = ExcelMappingService.GenerateAnalysisExcel(
+            // Run the Excel generation on a background task to allow UI to update
+            var excelBytes = await Task.Run(() => ExcelMappingService.GenerateAnalysisExcel(
                 excelMappingConfig, 
                 excelComparisonResult,
-                excelComparisonResult.DatatypeComparisons);
+                excelComparisonResult.DatatypeComparisons));
 
             var fileName = $"MappingAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
             var base64 = Convert.ToBase64String(excelBytes);
@@ -1120,6 +1126,11 @@ public partial class SchemaComparison : ComponentBase
         catch (Exception ex)
         {
             errorMessage = $"Error exporting analysis to Excel: {ex.Message}";
+        }
+        finally
+        {
+            isExportingAnalysisExcel = false;
+            StateHasChanged(); // Force UI update to hide spinner
         }
     }
 

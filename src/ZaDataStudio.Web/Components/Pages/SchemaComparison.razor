@@ -344,9 +344,17 @@
                         </button>
                         @if (excelComparisonResult != null)
                         {
-                            <button class="btn btn-sm btn-info ms-2" @onclick="DownloadAnalysisExcel">
-                                <span class="bi bi-file-earmark-spreadsheet me-1"></span>
-                                Export Analysis to Excel
+                            <button class="btn btn-sm btn-info ms-2" @onclick="DownloadAnalysisExcel" disabled="@isExportingAnalysisExcel">
+                                @if (isExportingAnalysisExcel)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Exporting...</span>
+                                }
+                                else
+                                {
+                                    <span class="bi bi-file-earmark-spreadsheet me-1"></span>
+                                    <span>Export Analysis to Excel</span>
+                                }
                             </button>
                         }
                     </div>

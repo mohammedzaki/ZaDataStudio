@@ -274,9 +274,11 @@ public class ExcelMappingService
 
         using var workbook = new XLWorkbook();
 
-        // 1. Create main DataMapping sheet with analysis results
+        // Track lookup sheet names for hyperlinking
+        var lookupSheetNames = new Dictionary<string, string>(); // Key: TableName.ColumnName, Value: SheetName
+
+        // 1. Create main DataMapping sheet with analysis results (pass lookup sheet names for later linking)
         var mainSheet = workbook.Worksheets.Add("DataMapping");
-        GenerateMainMappingSheet(mainSheet, config, analysisResult, datatypeComparisons);
 
         // 2. Create separate tabs for each lookup analysis (only if there are lookups)
         if (analysisResult.LookupAnalysis != null && analysisResult.LookupAnalysis.Any())
@@ -296,6 +298,11 @@ public class ExcelMappingService
 
                     var lookupSheet = workbook.Worksheets.Add(sheetName);
                     GenerateLookupAnalysisSheet(lookupSheet, lookupAnalysis);
+
+                    // Store sheet name for hyperlinking
+                    var key = $"{lookupAnalysis.TableName}.{lookupAnalysis.ColumnName}";
+                    lookupSheetNames[key] = sheetName;
+
                     lookupIndex++;
                 }
                 catch (Exception ex)
@@ -304,6 +311,9 @@ public class ExcelMappingService
                 }
             }
         }
+
+        // Generate main sheet with hyperlinks to lookup sheets
+        GenerateMainMappingSheet(mainSheet, config, analysisResult, datatypeComparisons, lookupSheetNames);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -314,7 +324,8 @@ public class ExcelMappingService
         IXLWorksheet sheet, 
         DataMappingConfiguration config,
         MappingComparisonResult analysisResult,
-        List<DatatypeComparison> datatypeComparisons)
+        List<DatatypeComparison> datatypeComparisons,
+        Dictionary<string, string> lookupSheetNames)
     {
         if (sheet == null || config == null)
             return;
@@ -392,6 +403,32 @@ public class ExcelMappingService
                 else if (analysisText.Contains("✗"))
                 {
                     sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightPink;
+                }
+
+                // Add hyperlink to lookup analysis sheet if it exists
+                if (lookupSheetNames != null)
+                {
+                    var key = $"{mapping.NewTableName}.{mapping.NewColumn}";
+                    if (lookupSheetNames.ContainsKey(key))
+                    {
+                        var lookupSheetName = lookupSheetNames[key];
+                        var cell = sheet.Cell(row, 16);
+
+                        // Add hyperlink to the cell
+                        try
+                        {
+                            cell.SetHyperlink(new XLHyperlink($"'{lookupSheetName}'!A1"));
+                            cell.Style.Font.FontColor = XLColor.Blue;
+                            cell.Style.Font.Underline = XLFontUnderlineValues.Single;
+
+                            // Append link indicator to text
+                            cell.Value = $"{analysisText} 🔗";
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error adding hyperlink for {key}: {ex.Message}");
+                        }
+                    }
                 }
 
                 row++;
@@ -548,6 +585,71 @@ public class ExcelMappingService
             }
 
             row++; // Blank row
+
+            // Queries Section
+            if (!string.IsNullOrEmpty(lookup.SourceLookupQuery) || 
+                !string.IsNullOrEmpty(lookup.DestinationLookupQuery) ||
+                !string.IsNullOrEmpty(lookup.AffectedRecordCountQuery))
+            {
+                sheet.Cell(row, 1).Value = "QUERIES";
+                sheet.Cell(row, 1).Style.Font.Bold = true;
+                sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+                sheet.Range(row, 1, row, 3).Merge();
+                row++;
+
+                if (!string.IsNullOrEmpty(lookup.SourceLookupQuery))
+                {
+                    sheet.Cell(row, 1).Value = "Source Lookup Query:";
+                    sheet.Cell(row, 1).Style.Font.Bold = true;
+                    row++;
+
+                    var sourceQueryCell = sheet.Cell(row, 1);
+                    sourceQueryCell.Value = lookup.SourceLookupQuery;
+                    sourceQueryCell.Style.Font.FontName = "Consolas";
+                    sourceQueryCell.Style.Font.FontSize = 9;
+                    sourceQueryCell.Style.Fill.BackgroundColor = XLColor.LightGray;
+                    sourceQueryCell.Style.Alignment.WrapText = true;
+                    sheet.Range(row, 1, row, 3).Merge();
+                    row++;
+                    row++; // Blank row
+                }
+
+                if (!string.IsNullOrEmpty(lookup.DestinationLookupQuery))
+                {
+                    sheet.Cell(row, 1).Value = "Destination Lookup Query:";
+                    sheet.Cell(row, 1).Style.Font.Bold = true;
+                    row++;
+
+                    var destQueryCell = sheet.Cell(row, 1);
+                    destQueryCell.Value = lookup.DestinationLookupQuery;
+                    destQueryCell.Style.Font.FontName = "Consolas";
+                    destQueryCell.Style.Font.FontSize = 9;
+                    destQueryCell.Style.Fill.BackgroundColor = XLColor.LightGray;
+                    destQueryCell.Style.Alignment.WrapText = true;
+                    sheet.Range(row, 1, row, 3).Merge();
+                    row++;
+                    row++; // Blank row
+                }
+
+                if (!string.IsNullOrEmpty(lookup.AffectedRecordCountQuery))
+                {
+                    sheet.Cell(row, 1).Value = "Mismatch Count Query:";
+                    sheet.Cell(row, 1).Style.Font.Bold = true;
+                    row++;
+
+                    var mismatchQueryCell = sheet.Cell(row, 1);
+                    mismatchQueryCell.Value = lookup.AffectedRecordCountQuery;
+                    mismatchQueryCell.Style.Font.FontName = "Consolas";
+                    mismatchQueryCell.Style.Font.FontSize = 9;
+                    mismatchQueryCell.Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    mismatchQueryCell.Style.Alignment.WrapText = true;
+                    sheet.Range(row, 1, row, 3).Merge();
+                    row++;
+                    row++; // Blank row
+                }
+
+                row++; // Extra blank row after queries section
+            }
 
             // Destination Lookup Values Section
             sheet.Cell(row, 1).Value = "DESTINATION LOOKUP VALUES";
