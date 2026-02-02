@@ -357,6 +357,8 @@ public class ExcelMappingService
         int row = 2;
         int maxRow = 1048576; // Excel's maximum row limit
 
+        var prevTable = config.ColumnMappings.First().NewTableName ?? "";
+
         foreach (var mapping in config.ColumnMappings)
         {
             if (row > maxRow)
@@ -367,11 +369,17 @@ public class ExcelMappingService
 
             try
             {
+                if (mapping.NewTableName != prevTable)
+                {
+                    // Add gray separator
+                    AddGraySeparator(sheet, row, 16);
+                    row++;
+                }
                 sheet.Cell(row, 1).Value = mapping.NewTableName ?? "";
                 sheet.Cell(row, 2).Value = mapping.NewColumn ?? "";
                 sheet.Cell(row, 3).Value = mapping.NewDataType ?? "";
-                sheet.Cell(row, 4).Value = mapping.NewColumnNullable.HasValue 
-                    ? (mapping.NewColumnNullable.Value ? "YES" : "NO") 
+                sheet.Cell(row, 4).Value = mapping.NewColumnNullable.HasValue
+                    ? (mapping.NewColumnNullable.Value ? "YES" : "NO")
                     : "";
                 sheet.Cell(row, 5).Value = mapping.HasLookup ? "YES" : "NO";
                 sheet.Cell(row, 6).Value = mapping.NewLookupTable ?? "";
@@ -379,8 +387,8 @@ public class ExcelMappingService
                 sheet.Cell(row, 8).Value = mapping.OldTableName ?? "";
                 sheet.Cell(row, 9).Value = mapping.OldColumn ?? "";
                 sheet.Cell(row, 10).Value = mapping.OldDataType ?? "";
-                sheet.Cell(row, 11).Value = mapping.OldColumnNullable.HasValue 
-                    ? (mapping.OldColumnNullable.Value ? "YES" : "NO") 
+                sheet.Cell(row, 11).Value = mapping.OldColumnNullable.HasValue
+                    ? (mapping.OldColumnNullable.Value ? "YES" : "NO")
                     : "";
                 sheet.Cell(row, 12).Value = mapping.OldLookupTable ?? "";
                 sheet.Cell(row, 13).Value = mapping.MappingRule ?? "";
@@ -431,7 +439,8 @@ public class ExcelMappingService
                     }
                 }
 
-                row++;
+                row++; // Blank row
+                prevTable = mapping.NewTableName;
             }
             catch (Exception ex)
             {
@@ -798,6 +807,19 @@ public class ExcelMappingService
                 // Ignore nested errors
             }
         }
+    }
+
+    /// <summary>
+    /// Add a gray separator row for visual separation between sections
+    /// </summary>
+    private void AddGraySeparator(IXLWorksheet sheet, int row, int columnCount)
+    {
+        var range = sheet.Range(row, 1, row, columnCount);
+        range.Style.Fill.BackgroundColor = XLColor.Gray;
+        range.Merge();
+
+        // Set a small height for the separator
+        //sheet.Row(row).Height = 5;
     }
 
     private string SanitizeSheetName(string name)

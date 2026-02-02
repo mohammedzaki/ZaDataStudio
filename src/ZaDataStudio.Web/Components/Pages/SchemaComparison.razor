@@ -342,7 +342,7 @@
                                 <span>Analyze Excel Mappings</span>
                             }
                         </button>
-                        @if (excelComparisonResult != null)
+                        @if (excelComparisonResult != null && !isComparingExcelMappings)
                         {
                             <button class="btn btn-sm btn-info ms-2" @onclick="DownloadAnalysisExcel" disabled="@isExportingAnalysisExcel">
                                 @if (isExportingAnalysisExcel)

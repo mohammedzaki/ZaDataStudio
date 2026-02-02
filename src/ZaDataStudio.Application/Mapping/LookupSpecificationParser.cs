@@ -17,8 +17,9 @@ public class LookupSpecificationParser
         if (string.IsNullOrWhiteSpace(specification))
             return null;
 
-        // Pattern: [ValueColumnName].[TableName].[ColumnName] = Value ON [JoinColumnName]
-        var pattern = @"\[([^\]]+)\]\.\[([^\]]+)\]\.\[([^\]]+)\]\s*(!=|=)\s*(.+)\s+ON\s+\[([^\]]+)\]";
+        // Pattern: [ValueColumnName].[TableName].[ColumnName] = Value [ON [JoinColumnName] (optional)] [whereCondition (optional)]
+        // WHERE [dbo].[VolunteerSkills].[Activity_Lookup_Category_Code] = 'SKLLS'
+        var pattern = @"\[([^\]]+)\]\.\[([^\]]+)\]\.\[([^\]]+)\]\s*(!=|=)\s*(.+?)(?:\s+ON\s+\[([^\]]+)\])?(?:\s+WHERE\s+(.+))?$";
         var match = Regex.Match(specification.Trim(), pattern);
 
         if (match.Success)
@@ -30,7 +31,8 @@ public class LookupSpecificationParser
                 ColumnName = match.Groups[3].Value.Trim(),
                 FilterOperator = match.Groups[4].Value.Trim(),
                 FilterValue = match.Groups[5].Value.Trim(),
-                JoinColumnName = match.Groups[6].Value.Trim(),
+                JoinColumnName = match.Groups.Count > 6 && match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty,
+                WhereCondition = match.Groups.Count > 7 && match.Groups[7].Success ? match.Groups[7].Value.Trim() : string.Empty,
                 RawSpecification = specification
             };
         }
@@ -45,6 +47,11 @@ public class LookupSpecificationParser
     {
         var tableName = FormatTableName(spec.TableName);
         var query = $"SELECT * FROM {tableName} WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}";
+        
+        if (!string.IsNullOrWhiteSpace(spec.WhereCondition))
+        {
+            query += $" AND {spec.WhereCondition}";
+        }
         
         if (!string.IsNullOrWhiteSpace(additionalWhere))
         {
@@ -87,6 +94,7 @@ public class LookupTableSpec
     public string FilterOperator { get; set; } = string.Empty;
     public string FilterValue { get; set; } = string.Empty;
     public string JoinColumnName { get; set; } = string.Empty;
+    public string WhereCondition { get; set; } = string.Empty;
     public string RawSpecification { get; set; } = string.Empty;
 
     public bool IsValid =>
@@ -94,8 +102,7 @@ public class LookupTableSpec
         !string.IsNullOrWhiteSpace(TableName) && 
         !string.IsNullOrWhiteSpace(ColumnName) &&
         !string.IsNullOrWhiteSpace(FilterOperator) &&
-        !string.IsNullOrWhiteSpace(FilterValue) &&
-        !string.IsNullOrWhiteSpace(JoinColumnName);
+        !string.IsNullOrWhiteSpace(FilterValue);
 
     public override string ToString() => RawSpecification;
 }
