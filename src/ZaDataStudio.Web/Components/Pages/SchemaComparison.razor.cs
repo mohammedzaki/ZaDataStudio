@@ -70,6 +70,7 @@ public partial class SchemaComparison : ComponentBase
     private List<ComparisonSession> savedSessions = new();
     private ISessionRepository SessionRepository;
     private SqlServerComparisonService ComparisonService;
+    private SqlServerDatabaseService DatabaseService;
     private DataComparisonService DataComparisonService;
     private ExcelMappingService ExcelMappingService;
     private IJSRuntime JSRuntime;
@@ -77,6 +78,7 @@ public partial class SchemaComparison : ComponentBase
     public SchemaComparison(
         ISessionRepository sessionRepository, 
         SqlServerComparisonService comparisonService,
+        SqlServerDatabaseService databaseService,
         DataComparisonService dataComparisonService,
         ExcelMappingService excelMappingService,
         IMappingComparisonService mappingComparisonService,
@@ -84,6 +86,7 @@ public partial class SchemaComparison : ComponentBase
     {
         SessionRepository = sessionRepository;
         ComparisonService = comparisonService;
+        DatabaseService = databaseService;
         DataComparisonService = dataComparisonService;
         ExcelMappingService = excelMappingService;
         MappingComparisonService = mappingComparisonService;
@@ -333,27 +336,7 @@ public partial class SchemaComparison : ComponentBase
 
     private async Task<List<string>> GetTableColumnsAsync(string connectionString, string tableName)
     {
-        var columns = new List<string>();
-
-        using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-
-        var query = @"
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA + '.' + TABLE_NAME = @tableName
-        ORDER BY ORDINAL_POSITION";
-
-        using var command = new SqlCommand(query, connection);
-        command.Parameters.AddWithValue("@tableName", tableName);
-
-        using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            columns.Add(reader.GetString(0));
-        }
-
-        return columns;
+        return await DatabaseService.GetTableColumnsAsync(connectionString, tableName);
     }
 
     private void AutoMapColumns()

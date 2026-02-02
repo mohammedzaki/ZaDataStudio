@@ -14,34 +14,39 @@ namespace ZaDataStudio.Infrastructure.Persistence.SqlServer;
 
 public class SqlServerComparisonService
 {
+    private readonly SqlServerDatabaseService _databaseService;
+
+    public SqlServerComparisonService(SqlServerDatabaseService databaseService)
+    {
+        _databaseService = databaseService;
+    }
+
     public async Task<ConnectionTestResult> TestConnectionAsync(string connectionString)
     {
         var result = new ConnectionTestResult();
-        var startTime = DateTime.UtcNow;
 
         try
         {
-            using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
+            var testResult = await _databaseService.TestConnectionAsync(connectionString);
 
-            var command = new SqlCommand("SELECT @@VERSION as Version, DB_NAME() as DatabaseName, @@SERVERNAME as ServerName", connection);
-            using var reader = await command.ExecuteReaderAsync();
+            result.IsSuccessful = testResult.IsSuccessful;
+            result.ServerName = testResult.ServerName ?? "Unknown";
+            result.DatabaseName = testResult.DatabaseName ?? "Unknown";
+            result.ResponseTime = testResult.ResponseTime;
+            result.ErrorMessage = testResult.ErrorMessage;
 
-            if (await reader.ReadAsync())
+            // Get version if successful
+            if (testResult.IsSuccessful)
             {
-                result.IsSuccessful = true;
-                result.ServerName = reader.IsDBNull(2) ? "Unknown" : reader.GetString(2);
-                result.DatabaseName = reader.IsDBNull(1) ? "Unknown" : reader.GetString(1);
-                result.Version = reader.IsDBNull(0) ? "Unknown" : reader.GetString(0);
+                var versionQuery = "SELECT @@VERSION as Version";
+                var versionResult = await _databaseService.ExecuteQueryAsync(connectionString, versionQuery);
+                result.Version = versionResult.FirstOrDefault()?["Version"]?.ToString() ?? "Unknown";
             }
-
-            result.ResponseTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         }
         catch (Exception ex)
         {
             result.IsSuccessful = false;
             result.ErrorMessage = ex.Message;
-            result.ResponseTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         }
 
         return result;
@@ -49,33 +54,14 @@ public class SqlServerComparisonService
 
     public async Task<List<string>> GetTableNamesAsync(string connectionString)
     {
-        var tableNames = new List<string>();
-
         try
         {
-            using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
-
-            var query = @"
-                SELECT TABLE_SCHEMA + '.' + TABLE_NAME as FullName
-                FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_TYPE = 'BASE TABLE'
-                ORDER BY TABLE_SCHEMA, TABLE_NAME";
-
-            using var command = new SqlCommand(query, connection);
-            using var reader = await command.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                tableNames.Add(reader.GetString(0));
-            }
+            return await _databaseService.GetTableNamesAsync(connectionString);
         }
         catch (Exception ex)
         {
             throw new Exception($"Error retrieving table names: {ex.Message}", ex);
         }
-
-        return tableNames;
     }
 
     public async Task<List<DomainColumnTypeInfo>> GetColumnTypesAsync(string connectionString, string tableName)
@@ -84,35 +70,19 @@ public class SqlServerComparisonService
 
         try
         {
-            using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
+            var columnTypes = await _databaseService.GetColumnTypesAsync(connectionString, tableName);
 
-            var query = @"
-                SELECT 
-                    COLUMN_NAME,
-                    DATA_TYPE,
-                    CHARACTER_MAXIMUM_LENGTH,
-                    NUMERIC_PRECISION,
-                    NUMERIC_SCALE,
-                    IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA + '.' + TABLE_NAME = @tableName
-                ORDER BY ORDINAL_POSITION";
-
-            using var command = new SqlCommand(query, connection);
-            command.Parameters.AddWithValue("@tableName", tableName);
-
-            using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            foreach (var kvp in columnTypes)
             {
+                var info = kvp.Value;
                 columns.Add(new DomainColumnTypeInfo
                 {
-                    ColumnName = reader.GetString(0),
-                    DataType = reader.GetString(1),
-                    MaxLength = reader.IsDBNull(2) ? null : reader.GetInt32(2),
-                    NumericPrecision = reader.IsDBNull(3) ? null : reader.GetByte(3),
-                    NumericScale = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                    IsNullable = reader.GetString(5) == "YES"
+                    ColumnName = info.ColumnName,
+                    DataType = info.DataType,
+                    MaxLength = info.MaxLength,
+                    NumericPrecision = info.Precision.HasValue ? (byte?)info.Precision.Value : null,
+                    NumericScale = info.Scale,
+                    IsNullable = info.IsNullable
                 });
             }
         }
@@ -178,8 +148,7 @@ public class SqlServerComparisonService
 
         try
         {
-            using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
+            var connection = await _databaseService._connectionManager.GetConnectionAsync(connectionString);
 
             var query = @"
                 SELECT 
@@ -210,7 +179,8 @@ public class SqlServerComparisonService
                 WHERE t.TABLE_TYPE = 'BASE TABLE'
                 ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION";
 
-            using var command = new SqlCommand(query, connection);
+            using var command = connection.CreateCommand();
+            command.CommandText = query;
             using var reader = await command.ExecuteReaderAsync();
 
             DomainTableSchema? currentTable = null;

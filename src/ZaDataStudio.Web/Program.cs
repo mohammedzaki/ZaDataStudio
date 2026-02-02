@@ -12,6 +12,10 @@ builder.Services.AddRazorComponents()
 // Register Infrastructure Services (Clean Architecture)
 builder.Services.AddScoped<ISessionRepository, SessionRepository>();
 builder.Services.AddScoped<IMappingComparisonService, MappingComparisonService>();
+
+// Register SQL Server services with connection manager
+builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerConnectionManager>();
+builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerDatabaseService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Excel.ExcelMappingService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.DataComparisonService>();
