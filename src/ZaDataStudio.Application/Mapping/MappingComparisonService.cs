@@ -85,23 +85,29 @@ public class MappingComparisonService : IMappingComparisonService
                     }
                 }
 
-                // 2. Compare datatypes
-                try
+                // 2. Compare datatypes (skip if has mapping rule or is lookup)
+                if (string.IsNullOrWhiteSpace(columnMapping.MappingRule) && 
+                    !columnMapping.HasLookup &&
+                    string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) &&
+                    string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
                 {
-                    var datatypeComparison = await CompareDatatypes(
-                        columnMapping.OldTableName,
-                        columnMapping.OldColumn,
-                        destTableName,
-                        columnMapping.NewColumn,
-                        columnMapping.OldDataType,
-                        columnMapping.NewDataType);
+                    try
+                    {
+                        var datatypeComparison = await CompareDatatypes(
+                            columnMapping.OldTableName,
+                            columnMapping.OldColumn,
+                            destTableName,
+                            columnMapping.NewColumn,
+                            columnMapping.OldDataType,
+                            columnMapping.NewDataType);
 
-                    comparisonResult.DatatypeComparisons.Add(datatypeComparison);
-                }
-                catch (Exception ex)
-                {
-                    // Log but continue with other columns
-                    Console.WriteLine($"Error comparing datatype {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                        comparisonResult.DatatypeComparisons.Add(datatypeComparison);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log but continue with other columns
+                        Console.WriteLine($"Error comparing datatype {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                    }
                 }
             }
         }
@@ -357,7 +363,7 @@ public class MappingComparisonService : IMappingComparisonService
             var tableName = FormatTableName(spec.TableName);
             // Query to get values filtered by the specification
             var sqlExpression = $@"
-            SELECT DISTINCT TOP 100 [{spec.ValueColumnName}]
+            SELECT DISTINCT TOP 50 [{spec.ValueColumnName}]
             FROM {tableName}
             WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}
             ORDER BY [{spec.ValueColumnName}]";
