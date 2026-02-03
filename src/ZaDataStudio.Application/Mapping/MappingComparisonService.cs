@@ -4,6 +4,7 @@ using System.Data;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using Microsoft.Data.SqlClient;
+using ZaDataStudio.Application.Common.Interfaces;
 using ZaDataStudio.Domain.Entities;
 
 namespace ZaDataStudio.Application.Mapping;
@@ -13,10 +14,12 @@ public class MappingComparisonService : IMappingComparisonService
     private string _sourceConnectionString;
     private string _destinationConnectionString;
     private MappingRuleEngine _ruleEngine;
+    private readonly IDatabaseService _databaseService;
 
-    public MappingComparisonService()
+    public MappingComparisonService(IDatabaseService databaseService)
     {
         _ruleEngine = new MappingRuleEngine();
+        _databaseService = databaseService;
     }
 
     public async Task<MappingComparisonResult> CompareMappingsAsync(
@@ -118,64 +121,59 @@ public class MappingComparisonService : IMappingComparisonService
     {
         var analysis = new LookupColumnAnalysis();
 
-        // Load source data
-        using (var sourceConn = new SqlConnection(_sourceConnectionString))
+        // Load source data using database service - connection will be reused
+        var sqlExpression = "";
+        if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
         {
-            await sourceConn.OpenAsync();
-            var sqlExpression = "";
-            if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
-            {
-                sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
-            }
-            if (string.IsNullOrWhiteSpace(sqlExpression))
-            {
-                // Get distinct values from source
-                sqlExpression = $@"
+            sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
+        }
+        if (string.IsNullOrWhiteSpace(sqlExpression))
+        {
+            // Get distinct values from source
+            sqlExpression = $@"
                 SELECT DISTINCT [{columnMapping.OldColumn}] 
                 FROM {columnMapping.OldTableName} 
                 ORDER BY [{columnMapping.OldColumn}]";
-            }
-            using (var cmd = new SqlCommand(sqlExpression, sourceConn))
-            {
-                using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    analysis.SourceSampleValues.Add(reader[0]?.ToString() ?? "");
-                }
-            } // Close reader before next query
-
-            // Get distinct count
-            var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
-            using var countCmd = new SqlCommand(countQuery, sourceConn);
-            analysis.SourceDistinctCount = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
-            analysis.SourceLookupQuery = sqlExpression;
         }
 
-        // Load destination data
-        using (var destConn = new SqlConnection(_destinationConnectionString))
+        var sourceConnection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
+        using (var cmd = sourceConnection.CreateCommand())
         {
-            await destConn.OpenAsync();
-
-            // Get distinct values from destination
-            var sqlExpression = $@"
-                SELECT DISTINCT [{columnMapping.NewColumn}] 
-                FROM {columnMapping.NewTableName} 
-                ORDER BY [{columnMapping.NewColumn}]";
-
-            using (var cmd = new SqlCommand(sqlExpression, destConn))
+            cmd.CommandText = sqlExpression;
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
             {
-                using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    analysis.DestinationSampleValues.Add(reader[0]?.ToString() ?? "");
-                }
-            } // Close reader before next query
-
-            // Get distinct count
-            var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
-            using var countCmd = new SqlCommand(countQuery, destConn);
-            analysis.DestinationDistinctCount = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
+                analysis.SourceSampleValues.Add(reader[0]?.ToString() ?? "");
+            }
         }
+
+        // Get distinct count - reuses same connection
+        var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
+        var countResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, countQuery);
+        analysis.SourceDistinctCount = countResult != null ? Convert.ToInt32(countResult) : 0;
+        analysis.SourceLookupQuery = sqlExpression;
+
+        // Load destination data using database service - connection will be reused
+        var destSqlExpression = $@"
+            SELECT DISTINCT [{columnMapping.NewColumn}] 
+            FROM {columnMapping.NewTableName} 
+            ORDER BY [{columnMapping.NewColumn}]";
+
+        var destConnection = await _databaseService.GetConnectionAsync(_destinationConnectionString);
+        using (var cmd = destConnection.CreateCommand())
+        {
+            cmd.CommandText = destSqlExpression;
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                analysis.DestinationSampleValues.Add(reader[0]?.ToString() ?? "");
+            }
+        }
+
+        // Get distinct count - reuses same connection
+        var destCountQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
+        var destCountResult = await _databaseService.ExecuteScalarAsync(_destinationConnectionString, destCountQuery);
+        analysis.DestinationDistinctCount = destCountResult != null ? Convert.ToInt32(destCountResult) : 0;
 
         // Find mismatched values (in source but not in destination)
         var destValuesSet = analysis.DestinationSampleValues.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -284,10 +282,10 @@ public class MappingComparisonService : IMappingComparisonService
             }
 
             // Query the actual count of records in the source for each mismatched value
-            using var conn = new SqlConnection(_sourceConnectionString);
-            await conn.OpenAsync();
-
-            using var countCmd = new SqlCommand(countQuery, conn);
+            // Use database service - connection will be reused
+            var connection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
+            using var countCmd = connection.CreateCommand();
+            countCmd.CommandText = countQuery;
             using var reader = await countCmd.ExecuteReaderAsync();
 
             var valueCounts = new Dictionary<string, string>();
@@ -335,18 +333,20 @@ public class MappingComparisonService : IMappingComparisonService
         bool isSource)
     {
         async Task<bool> ExecuteQuery(string sql) 
-        { 
-            using var conn = new SqlConnection(connectionString);
-            await conn.OpenAsync();
-            using var cmd = new SqlCommand(sql, conn);
+        {
+            // Use database service - connection will be reused
+            var connection = await _databaseService.GetConnectionAsync(connectionString);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
             using var reader = await cmd.ExecuteReaderAsync();
-            
+
             while (await reader.ReadAsync())
             {
                 targetList.Add(reader[0]?.ToString() ?? "");
             }
             return true;
         }
+
         if (spec == null)
         {
             var sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
@@ -400,63 +400,51 @@ public class MappingComparisonService : IMappingComparisonService
             DestinationColumn = destColumn
         };
 
-        // Get actual datatypes from source database
-        using (var sourceConn = new SqlConnection(_sourceConnectionString))
+        var query = @"
+            SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
+
+        // Get actual datatypes from source database using database service - connection reused
+        var sourceConnection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
+        using (var cmd = sourceConnection.CreateCommand())
         {
-            await sourceConn.OpenAsync();
+            cmd.CommandText = query;
+            cmd.Parameters.AddWithValue("@tableSchema", sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
+            cmd.Parameters.AddWithValue("@tableName", sourceTable);
+            cmd.Parameters.AddWithValue("@columnName", sourceColumn);
 
-            var query = @"
-                SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
+            using var reader = await cmd.ExecuteReaderAsync();
 
-            using (var cmd = new SqlCommand(query, sourceConn))
+            if (await reader.ReadAsync())
             {
-                cmd.Parameters.AddWithValue("@tableSchema", sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
-                cmd.Parameters.AddWithValue("@tableName", sourceTable);
-                cmd.Parameters.AddWithValue("@columnName", sourceColumn);
+                var dataType = reader.GetString(0);
+                var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
+                var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
+                var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
 
-                using var reader = await cmd.ExecuteReaderAsync();
-                var str = cmd.ToString();
-
-                if (await reader.ReadAsync())
-                {
-                    var dataType = reader.GetString(0);
-                    var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-                    var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
-                    var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
-
-                    comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
-                }
+                comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
             }
         }
 
-        // Get actual datatypes from destination database
-        using (var destConn = new SqlConnection(_destinationConnectionString))
+        // Get actual datatypes from destination database using database service - connection reused
+        var destConnection = await _databaseService.GetConnectionAsync(_destinationConnectionString);
+        using (var cmd = destConnection.CreateCommand())
         {
-            await destConn.OpenAsync();
+            cmd.CommandText = query;
+            cmd.Parameters.AddWithValue("@tableSchema", destTable.Contains(".") ? destTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
+            cmd.Parameters.AddWithValue("@tableName", destTable);
+            cmd.Parameters.AddWithValue("@columnName", destColumn);
 
-            var query = @"
-                SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
-
-            using (var cmd = new SqlCommand(query, destConn))
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
             {
-                cmd.Parameters.AddWithValue("@tableSchema", destTable.Contains(".") ? destTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
-                cmd.Parameters.AddWithValue("@tableName", destTable);
-                cmd.Parameters.AddWithValue("@columnName", destColumn);
+                var dataType = reader.GetString(0);
+                var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
+                var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
+                var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
 
-                using var reader = await cmd.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
-                {
-                    var dataType = reader.GetString(0);
-                    var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-                    var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
-                    var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
-
-                    comparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
-                }
+                comparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
             }
         }
 

@@ -80,8 +80,8 @@ public class SqlServerComparisonService
                     ColumnName = info.ColumnName,
                     DataType = info.DataType,
                     MaxLength = info.MaxLength,
-                    NumericPrecision = info.Precision.HasValue ? (byte?)info.Precision.Value : null,
-                    NumericScale = info.Scale,
+                    NumericPrecision = info.NumericPrecision,
+                    NumericScale = info.NumericScale,
                     IsNullable = info.IsNullable
                 });
             }

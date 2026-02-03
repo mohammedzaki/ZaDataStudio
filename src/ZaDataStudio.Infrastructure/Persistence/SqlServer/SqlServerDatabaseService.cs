@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using System.Data;
+using ZaDataStudio.Application.Common.Interfaces;
+using ZaDataStudio.Domain.Entities;
 
 namespace ZaDataStudio.Infrastructure.Persistence.SqlServer;
 
@@ -7,13 +9,103 @@ namespace ZaDataStudio.Infrastructure.Persistence.SqlServer;
 /// Centralized service for all SQL Server database operations
 /// Uses SqlServerConnectionManager for efficient connection management
 /// </summary>
-public class SqlServerDatabaseService
+public class SqlServerDatabaseService : IDatabaseService
 {
     internal readonly SqlServerConnectionManager _connectionManager;
 
     public SqlServerDatabaseService(SqlServerConnectionManager connectionManager)
     {
         _connectionManager = connectionManager;
+    }
+
+    /// <summary>
+    /// Gets or creates a connection for the given connection string
+    /// </summary>
+    public async Task<SqlConnection> GetConnectionAsync(string connectionString)
+    {
+        return await _connectionManager.GetConnectionAsync(connectionString);
+    }
+
+    /// <summary>
+    /// Executes a SQL command and returns a SqlDataReader
+    /// </summary>
+    public async Task<SqlDataReader> ExecuteReaderAsync(string connectionString, string query, Action<SqlCommand>? configureCommand = null)
+    {
+        return await _connectionManager.ExecuteReaderAsync(connectionString, query, configureCommand);
+    }
+
+    /// <summary>
+    /// Executes a scalar SQL command
+    /// </summary>
+    public async Task<object?> ExecuteScalarAsync(string connectionString, string query, Action<SqlCommand>? configureCommand = null)
+    {
+        return await _connectionManager.ExecuteScalarAsync(connectionString, query, configureCommand);
+    }
+
+    /// <summary>
+    /// Executes a non-query SQL command
+    /// </summary>
+    public async Task<int> ExecuteNonQueryAsync(string connectionString, string query, Action<SqlCommand>? configureCommand = null)
+    {
+        return await _connectionManager.ExecuteNonQueryAsync(connectionString, query, configureCommand);
+    }
+
+    /// <summary>
+    /// Tests database connection
+    /// </summary>
+    public async Task<(bool IsSuccessful, string? ServerName, string? DatabaseName, double ResponseTime, string? ErrorMessage)> TestConnectionAsync(string connectionString)
+    {
+        var startTime = DateTime.Now;
+
+        try
+        {
+            var connection = await GetConnectionAsync(connectionString);
+
+            // Get server and database info
+            var serverName = connection.DataSource;
+            var databaseName = connection.Database;
+
+            // Test with a simple query
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1";
+            await command.ExecuteScalarAsync();
+
+            var responseTime = (DateTime.Now - startTime).TotalMilliseconds;
+
+            return (true, serverName, databaseName, responseTime, null);
+        }
+        catch (Exception ex)
+        {
+            var responseTime = (DateTime.Now - startTime).TotalMilliseconds;
+            return (false, null, null, responseTime, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Executes a custom query and returns results as a list of dictionaries
+    /// </summary>
+    public async Task<List<Dictionary<string, object?>>> ExecuteQueryAsync(string connectionString, string query, Action<SqlCommand>? configureCommand = null)
+    {
+        var results = new List<Dictionary<string, object?>>();
+
+        var connection = await GetConnectionAsync(connectionString);
+        using var command = connection.CreateCommand();
+        command.CommandText = query;
+
+        configureCommand?.Invoke(command);
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            }
+            results.Add(row);
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -102,45 +194,14 @@ public class SqlServerDatabaseService
                 ColumnName = columnName,
                 DataType = reader.GetString(1),
                 MaxLength = reader.IsDBNull(2) ? null : reader.GetInt32(2),
-                Precision = reader.IsDBNull(3) ? null : Convert.ToInt32(reader.GetByte(3)),
-                Scale = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                NumericPrecision = reader.IsDBNull(3) ? null : reader.GetByte(3),
+                NumericScale = reader.IsDBNull(4) ? null : reader.GetInt32(4),
                 IsNullable = reader.GetString(5) == "YES"
             };
             columns[columnName] = info;
         }
 
         return columns;
-    }
-
-    /// <summary>
-    /// Tests database connection
-    /// </summary>
-    public async Task<(bool IsSuccessful, string? ServerName, string? DatabaseName, double ResponseTime, string? ErrorMessage)> TestConnectionAsync(string connectionString)
-    {
-        var startTime = DateTime.Now;
-        
-        try
-        {
-            var connection = await _connectionManager.GetConnectionAsync(connectionString);
-            
-            // Get server and database info
-            var serverName = connection.DataSource;
-            var databaseName = connection.Database;
-            
-            // Test with a simple query
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT 1";
-            await command.ExecuteScalarAsync();
-            
-            var responseTime = (DateTime.Now - startTime).TotalMilliseconds;
-            
-            return (true, serverName, databaseName, responseTime, null);
-        }
-        catch (Exception ex)
-        {
-            var responseTime = (DateTime.Now - startTime).TotalMilliseconds;
-            return (false, null, null, responseTime, ex.Message);
-        }
     }
 
     /// <summary>
@@ -185,44 +246,4 @@ public class SqlServerDatabaseService
         var result = await _connectionManager.ExecuteScalarAsync(connectionString, query);
         return result != null ? Convert.ToInt32(result) : 0;
     }
-
-    /// <summary>
-    /// Executes a custom query and returns results as a list of dictionaries
-    /// </summary>
-    public async Task<List<Dictionary<string, object?>>> ExecuteQueryAsync(string connectionString, string query, Action<SqlCommand>? configureCommand = null)
-    {
-        var results = new List<Dictionary<string, object?>>();
-
-        var connection = await _connectionManager.GetConnectionAsync(connectionString);
-        using var command = connection.CreateCommand();
-        command.CommandText = query;
-        
-        configureCommand?.Invoke(command);
-
-        using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-            results.Add(row);
-        }
-
-        return results;
-    }
-}
-
-/// <summary>
-/// Column type information structure
-/// </summary>
-public class ColumnTypeInfo
-{
-    public string ColumnName { get; set; } = string.Empty;
-    public string DataType { get; set; } = string.Empty;
-    public int? MaxLength { get; set; }
-    public int? Precision { get; set; }
-    public int? Scale { get; set; }
-    public bool IsNullable { get; set; }
 }

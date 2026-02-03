@@ -70,7 +70,7 @@ public partial class SchemaComparison : ComponentBase
     private List<ComparisonSession> savedSessions = new();
     private ISessionRepository SessionRepository;
     private SqlServerComparisonService ComparisonService;
-    private SqlServerDatabaseService DatabaseService;
+    private IDatabaseService DatabaseService;
     private DataComparisonService DataComparisonService;
     private ExcelMappingService ExcelMappingService;
     private IJSRuntime JSRuntime;
@@ -78,7 +78,7 @@ public partial class SchemaComparison : ComponentBase
     public SchemaComparison(
         ISessionRepository sessionRepository, 
         SqlServerComparisonService comparisonService,
-        SqlServerDatabaseService databaseService,
+        IDatabaseService databaseService,
         DataComparisonService dataComparisonService,
         ExcelMappingService excelMappingService,
         IMappingComparisonService mappingComparisonService,
