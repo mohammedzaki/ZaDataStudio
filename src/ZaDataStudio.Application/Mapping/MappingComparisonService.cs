@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Reflection.Metadata.Ecma335;
@@ -136,17 +137,12 @@ public class MappingComparisonService : IMappingComparisonService
                 ORDER BY [{columnMapping.OldColumn}]";
         }
 
-        var sourceConnection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
-        using (var cmd = sourceConnection.CreateCommand())
+        using var srcReader = await _databaseService.ExecuteReaderAsync(_sourceConnectionString, sqlExpression);
+        while (await srcReader.ReadAsync())
         {
-            cmd.CommandText = sqlExpression;
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                analysis.SourceSampleValues.Add(reader[0]?.ToString() ?? "");
-            }
+            analysis.SourceSampleValues.Add(srcReader[0]?.ToString() ?? "");
         }
-
+        
         // Get distinct count - reuses same connection
         var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
         var countResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, countQuery);
@@ -159,17 +155,12 @@ public class MappingComparisonService : IMappingComparisonService
             FROM {columnMapping.NewTableName} 
             ORDER BY [{columnMapping.NewColumn}]";
 
-        var destConnection = await _databaseService.GetConnectionAsync(_destinationConnectionString);
-        using (var cmd = destConnection.CreateCommand())
+        using var destReader = await _databaseService.ExecuteReaderAsync(_destinationConnectionString, destSqlExpression);
+        while (await destReader.ReadAsync())
         {
-            cmd.CommandText = destSqlExpression;
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                analysis.DestinationSampleValues.Add(reader[0]?.ToString() ?? "");
-            }
+            analysis.DestinationSampleValues.Add(destReader[0]?.ToString() ?? "");
         }
-
+        
         // Get distinct count - reuses same connection
         var destCountQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
         var destCountResult = await _databaseService.ExecuteScalarAsync(_destinationConnectionString, destCountQuery);
@@ -283,19 +274,14 @@ public class MappingComparisonService : IMappingComparisonService
 
             // Query the actual count of records in the source for each mismatched value
             // Use database service - connection will be reused
-            var connection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
-            using var countCmd = connection.CreateCommand();
-            countCmd.CommandText = countQuery;
-            using var reader = await countCmd.ExecuteReaderAsync();
-
+            using var srcReader = await _databaseService.ExecuteReaderAsync(_sourceConnectionString, countQuery);
             var valueCounts = new Dictionary<string, string>();
             var totalAffectedRecords = 0;
-
-            while (await reader.ReadAsync())
+            while (await srcReader.ReadAsync())
             {
-                var value = string.IsNullOrEmpty(reader[1]?.ToString()) ? "NULL" : reader[1]?.ToString() ?? "";
-                var count = reader.GetInt32(2);
-                valueCounts[value] = reader[0]?.ToString() + " :> " + count;
+                var value = string.IsNullOrEmpty(srcReader[1]?.ToString()) ? "NULL" : srcReader[1]?.ToString() ?? "";
+                var count = srcReader.GetInt32(2);
+                valueCounts[value] = srcReader[0]?.ToString() + " :> " + count;
                 totalAffectedRecords += count;
             }
 
@@ -332,14 +318,9 @@ public class MappingComparisonService : IMappingComparisonService
         List<string> targetList,
         bool isSource)
     {
-        async Task<bool> ExecuteQuery(string sql) 
+        async Task<bool> ExecuteQuery(string sqlQuery) 
         {
-            // Use database service - connection will be reused
-            var connection = await _databaseService.GetConnectionAsync(connectionString);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            using var reader = await cmd.ExecuteReaderAsync();
-
+            using var reader = await _databaseService.ExecuteReaderAsync(connectionString, sqlQuery);
             while (await reader.ReadAsync())
             {
                 targetList.Add(reader[0]?.ToString() ?? "");
@@ -406,47 +387,43 @@ public class MappingComparisonService : IMappingComparisonService
             WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
 
         // Get actual datatypes from source database using database service - connection reused
-        var sourceConnection = await _databaseService.GetConnectionAsync(_sourceConnectionString);
-        using (var cmd = sourceConnection.CreateCommand())
+
+        using var srcReader = await _databaseService.ExecuteReaderAsync(_sourceConnectionString, query, cmd =>
         {
             cmd.CommandText = query;
             cmd.Parameters.AddWithValue("@tableSchema", sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
             cmd.Parameters.AddWithValue("@tableName", sourceTable);
             cmd.Parameters.AddWithValue("@columnName", sourceColumn);
+        });
 
-            using var reader = await cmd.ExecuteReaderAsync();
+        if (await srcReader.ReadAsync())
+        {
+            var dataType = srcReader.GetString(0);
+            var maxLength = srcReader.IsDBNull(1) ? (int?)null : srcReader.GetInt32(1);
+            var precision = srcReader.IsDBNull(2) ? (byte?)null : srcReader.GetByte(2);
+            var scale = srcReader.IsDBNull(3) ? (int?)null : srcReader.GetInt32(3);
 
-            if (await reader.ReadAsync())
-            {
-                var dataType = reader.GetString(0);
-                var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-                var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
-                var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
-
-                comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
-            }
+            comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
         }
 
         // Get actual datatypes from destination database using database service - connection reused
-        var destConnection = await _databaseService.GetConnectionAsync(_destinationConnectionString);
-        using (var cmd = destConnection.CreateCommand())
+        using var destReader = await _databaseService.ExecuteReaderAsync(_destinationConnectionString, query, cmd =>
         {
             cmd.CommandText = query;
             cmd.Parameters.AddWithValue("@tableSchema", destTable.Contains(".") ? destTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
             cmd.Parameters.AddWithValue("@tableName", destTable);
             cmd.Parameters.AddWithValue("@columnName", destColumn);
+        });
+        if (await destReader.ReadAsync())
+        {
+            var dataType = destReader.GetString(0);
+            var maxLength = destReader.IsDBNull(1) ? (int?)null : destReader.GetInt32(1);
+            var precision = destReader.IsDBNull(2) ? (byte?)null : destReader.GetByte(2);
+            var scale = destReader.IsDBNull(3) ? (int?)null : destReader.GetInt32(3);
 
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                var dataType = reader.GetString(0);
-                var maxLength = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-                var precision = reader.IsDBNull(2) ? (byte?)null : reader.GetByte(2);
-                var scale = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
-
-                comparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
-            }
+            comparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
         }
+        await destReader.DisposeAsync();
 
         // Compare and identify issues
         CompareTypesAndFindIssues(comparison, excelSourceType, excelDestType);
