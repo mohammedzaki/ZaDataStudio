@@ -47,9 +47,15 @@ public class NullMappingRule : IMappingRule
         
         if (text.Contains("0") && mapping.NewDataType?.Contains("INT") == true)
             return "0";
-        
+
+        if ((text.Equals("0") || text.Equals("1")) && mapping.NewDataType?.Contains("BIT") == true)
+            return $"{text}";
+
         if (text.Contains("''") || text.Contains("empty string"))
             return "''";
+
+        if (text.Contains("{}") || text.Contains("empty string"))
+            return "'{}'";
 
         return null;
     }

@@ -24,6 +24,9 @@ namespace ZaDataStudio.Domain.Entities
         public string? NewLookupSpec { get; set; }
         public bool LookupFilterMismatch { get; set; }
         public string? LookupFilterMessage { get; set; }
+
+        public bool? HasError { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 }
 

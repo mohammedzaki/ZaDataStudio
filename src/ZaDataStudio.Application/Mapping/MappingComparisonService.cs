@@ -49,46 +49,45 @@ public class MappingComparisonService : IMappingComparisonService
                     columnMapping.OldColumn.Contains("CASE") ||
                     columnMapping.OldColumn.Contains("("))
                     continue;
-
+                var lookupAnalysis = new LookupColumnAnalysis
+                {
+                    SourceTable = columnMapping.OldTableName,
+                    SourceColumn = columnMapping.OldColumn,
+                    TableName = destTableName,
+                    ColumnName = columnMapping.NewColumn
+                };
                 // 1. Check lookup columns (with new format support)
-                if (columnMapping.HasLookup ||
-                    !string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) ||
-                    !string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
+                try
                 {
-                    try
+                    if (columnMapping.HasLookup ||
+                        !string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) ||
+                        !string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
                     {
-                        var lookupAnalysis = await AnalyzeLookupColumnWithSpec(columnMapping);
-
-                        lookupAnalysis.SourceTable = columnMapping.OldTableName;
-                        lookupAnalysis.SourceColumn = columnMapping.OldColumn;
-                        lookupAnalysis.TableName = destTableName;
-                        lookupAnalysis.ColumnName = columnMapping.NewColumn;
-
+                        lookupAnalysis = await AnalyzeLookupColumnWithSpec(columnMapping);
                         comparisonResult.LookupAnalysis.Add(lookupAnalysis);
                     }
-                    catch (Exception ex)
+                    else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
                     {
-                        Console.WriteLine($"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
-                    }
-                }
-                else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
-                {
-                    // If there's a mapping rule, try to analyze as lookup
-                    try
-                    {
-                        var lookupAnalysis = await AnalyzeLookupColumn(columnMapping);
-                        lookupAnalysis.SourceTable = columnMapping.OldTableName;
-                        lookupAnalysis.SourceColumn = columnMapping.OldColumn;
-                        lookupAnalysis.TableName = destTableName;
-                        lookupAnalysis.ColumnName = columnMapping.NewColumn;
+                        // If there's a mapping rule, try to analyze as lookup
+                        lookupAnalysis = await AnalyzeLookupColumn(columnMapping);
                         comparisonResult.LookupAnalysis.Add(lookupAnalysis);
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error analyzing mapping rule lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    lookupAnalysis.HasError = true;
+                    lookupAnalysis.ErrorMessage = $"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}";
+                    comparisonResult.LookupAnalysis.Add(lookupAnalysis);
+                    Console.WriteLine(lookupAnalysis.ErrorMessage);
                 }
 
+                var datatypeComparison = new DatatypeComparison
+                {
+                    SourceTable = columnMapping.OldTableName,
+                    SourceColumn = columnMapping.OldColumn,
+                    DestinationTable = destTableName,
+                    DestinationColumn = columnMapping.NewColumn
+                };
                 // 2. Compare datatypes (skip if has mapping rule or is lookup)
                 if (string.IsNullOrWhiteSpace(columnMapping.MappingRule) && 
                     !columnMapping.HasLookup &&
@@ -97,19 +96,16 @@ public class MappingComparisonService : IMappingComparisonService
                 {
                     try
                     {
-                        var datatypeComparison = await CompareDatatypes(
-                            columnMapping.OldTableName,
-                            columnMapping.OldColumn,
-                            destTableName,
-                            columnMapping.NewColumn,
+                        datatypeComparison = await CompareDatatypes(
+                            datatypeComparison,
                             columnMapping.OldDataType,
                             columnMapping.NewDataType);
-
                         comparisonResult.DatatypeComparisons.Add(datatypeComparison);
                     }
                     catch (Exception ex)
                     {
                         // Log but continue with other columns
+                        datatypeComparison.Issues.Add($"Error comparing datatype {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
                         Console.WriteLine($"Error comparing datatype {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
                     }
                 }
@@ -142,7 +138,8 @@ public class MappingComparisonService : IMappingComparisonService
         {
             analysis.SourceSampleValues.Add(srcReader[0]?.ToString() ?? "");
         }
-        
+        await srcReader.DisposeAsync();
+
         // Get distinct count - reuses same connection
         var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
         var countResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, countQuery);
@@ -160,6 +157,7 @@ public class MappingComparisonService : IMappingComparisonService
         {
             analysis.DestinationSampleValues.Add(destReader[0]?.ToString() ?? "");
         }
+        await destReader.DisposeAsync();
         
         // Get distinct count - reuses same connection
         var destCountQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
@@ -325,6 +323,7 @@ public class MappingComparisonService : IMappingComparisonService
             {
                 targetList.Add(reader[0]?.ToString() ?? "");
             }
+            await reader.DisposeAsync();
             return true;
         }
 
@@ -369,50 +368,45 @@ public class MappingComparisonService : IMappingComparisonService
     }
 
     private async Task<DatatypeComparison> CompareDatatypes(
-        string sourceTable, string sourceColumn,
-        string destTable, string destColumn,
+        DatatypeComparison datatypeComparison,
         string excelSourceType, string excelDestType)
     {
-        var comparison = new DatatypeComparison
-        {
-            SourceTable = sourceTable,
-            SourceColumn = sourceColumn,
-            DestinationTable = destTable,
-            DestinationColumn = destColumn
-        };
-
         var query = @"
             SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
-
+        var maxLenQuery = @$"SELECT MAX(LEN({datatypeComparison.SourceColumn})) AS MaxLength FROM {(datatypeComparison.SourceTable.Contains(".") ? datatypeComparison.SourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo")}.{datatypeComparison.SourceTable};";
+        
         // Get actual datatypes from source database using database service - connection reused
+        var srcMaxLenResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, maxLenQuery);
+        var srcMaxLength = srcMaxLenResult == null ? (int?)null : Convert.ToInt32(srcMaxLenResult);
 
         using var srcReader = await _databaseService.ExecuteReaderAsync(_sourceConnectionString, query, cmd =>
         {
             cmd.CommandText = query;
-            cmd.Parameters.AddWithValue("@tableSchema", sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
-            cmd.Parameters.AddWithValue("@tableName", sourceTable);
-            cmd.Parameters.AddWithValue("@columnName", sourceColumn);
+            cmd.Parameters.AddWithValue("@tableSchema", datatypeComparison.SourceTable.Contains(".") ? datatypeComparison.SourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
+            cmd.Parameters.AddWithValue("@tableName", datatypeComparison.SourceTable);
+            cmd.Parameters.AddWithValue("@columnName", datatypeComparison.SourceColumn);
         });
 
         if (await srcReader.ReadAsync())
         {
             var dataType = srcReader.GetString(0);
-            var maxLength = srcReader.IsDBNull(1) ? (int?)null : srcReader.GetInt32(1);
+            //var maxLength = srcReader.IsDBNull(1) ? (int?)null : srcReader.GetInt32(1);
             var precision = srcReader.IsDBNull(2) ? (byte?)null : srcReader.GetByte(2);
             var scale = srcReader.IsDBNull(3) ? (int?)null : srcReader.GetInt32(3);
 
-            comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
+            datatypeComparison.SourceDataType = FormatDataType(dataType, srcMaxLength, precision, scale);
         }
+        await srcReader.DisposeAsync();
 
         // Get actual datatypes from destination database using database service - connection reused
         using var destReader = await _databaseService.ExecuteReaderAsync(_destinationConnectionString, query, cmd =>
         {
             cmd.CommandText = query;
-            cmd.Parameters.AddWithValue("@tableSchema", destTable.Contains(".") ? destTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
-            cmd.Parameters.AddWithValue("@tableName", destTable);
-            cmd.Parameters.AddWithValue("@columnName", destColumn);
+            cmd.Parameters.AddWithValue("@tableSchema", datatypeComparison.DestinationTable.Contains(".") ? datatypeComparison.DestinationTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo");
+            cmd.Parameters.AddWithValue("@tableName", datatypeComparison.DestinationTable);
+            cmd.Parameters.AddWithValue("@columnName", datatypeComparison.DestinationColumn);
         });
         if (await destReader.ReadAsync())
         {
@@ -421,14 +415,14 @@ public class MappingComparisonService : IMappingComparisonService
             var precision = destReader.IsDBNull(2) ? (byte?)null : destReader.GetByte(2);
             var scale = destReader.IsDBNull(3) ? (int?)null : destReader.GetInt32(3);
 
-            comparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
+            datatypeComparison.DestinationDataType = FormatDataType(dataType, maxLength, precision, scale);
         }
         await destReader.DisposeAsync();
 
         // Compare and identify issues
-        CompareTypesAndFindIssues(comparison, excelSourceType, excelDestType);
+        CompareTypesAndFindIssues(datatypeComparison, excelSourceType, excelDestType);
 
-        return comparison;
+        return datatypeComparison;
     }
 
     private string FormatDataType(string dataType, int? maxLength, byte? precision, int? scale)
