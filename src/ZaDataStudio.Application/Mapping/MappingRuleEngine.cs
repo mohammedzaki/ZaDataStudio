@@ -18,8 +18,9 @@ public class MappingRuleEngine
         _rules =
         [
             new NullMappingRule(),
+            new ColumnToRowMappingRule(),
             new ExpressionMappingRule(),
-            //new LookupMappingRule(),
+            new LookupMappingRule(),
             new ConcatenationMappingRule(),
             new ConditionalMappingRule(),
             new TypeConversionMappingRule(),
@@ -46,7 +47,8 @@ public class MappingRuleEngine
         {
             SqlExpression = "NULL",
             HasWarning = true,
-            Warning = $"No rule could handle mapping for {mapping.NewColumn}"
+            Warning = $"No rule could handle mapping for {mapping.NewColumn}",
+            MappingRuleType = "NoRuleMatched"
         };
     }
 
@@ -161,10 +163,14 @@ public class MappingRuleEngine
         // Process each column mapping
         var selectExpressions = new List<string>();
         var warnings = new List<string>();
-
+        MappingResult? resultRowsToColmuns = null;
         foreach (var mapping in approvedMappings)
         {
             var result = ProcessMapping(mapping, context);
+            if (result.MappingRuleType == nameof(ColumnToRowMappingRule))
+                resultRowsToColmuns = result;
+            else
+                resultRowsToColmuns = null;
             selectExpressions.Add($"    {result.SqlExpression} AS [{mapping.NewColumn}]");
             
             if (result.HasWarning)
@@ -208,6 +214,12 @@ public class MappingRuleEngine
         else
         {
             sql.AppendLine(";");
+        }
+
+        if (resultRowsToColmuns != null)
+        {
+            sql.AppendLine();
+            sql.AppendLine(resultRowsToColmuns.FullSqlExpression);
         }
 
         sql.AppendLine();

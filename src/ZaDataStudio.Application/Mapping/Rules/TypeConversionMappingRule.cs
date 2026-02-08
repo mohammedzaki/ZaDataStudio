@@ -27,10 +27,11 @@ public class TypeConversionMappingRule : IMappingRule
     {
         var sourceExpr = GetSourceColumnExpression(mapping);
         var conversionExpr = GenerateConversion(sourceExpr, mapping.OldDataType, mapping.NewDataType);
-        
+
         return new MappingResult
         {
-            SqlExpression = conversionExpr
+            SqlExpression = conversionExpr,
+            MappingRuleType = nameof(TypeConversionMappingRule)
         };
     }
 

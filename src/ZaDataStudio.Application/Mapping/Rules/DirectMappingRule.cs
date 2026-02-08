@@ -19,10 +19,11 @@ public class DirectMappingRule : IMappingRule
     public MappingResult Apply(DataColumnMapping mapping, MappingContext context)
     {
         var sourceExpr = GenerateSourceExpression(mapping);
-        
+
         return new MappingResult
         {
-            SqlExpression = sourceExpr
+            SqlExpression = sourceExpr,
+            MappingRuleType = nameof(DirectMappingRule)
         };
     }
 

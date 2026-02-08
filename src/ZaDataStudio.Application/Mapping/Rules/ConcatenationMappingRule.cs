@@ -25,10 +25,11 @@ public class ConcatenationMappingRule : IMappingRule
     {
         // Parse concatenation rule
         var expression = ParseConcatenation(mapping.MappingRule, mapping.OldTableName);
-        
+
         return new MappingResult
         {
-            SqlExpression = expression
+            SqlExpression = expression,
+            MappingRuleType = nameof(ConcatenationMappingRule)
         };
     }
 

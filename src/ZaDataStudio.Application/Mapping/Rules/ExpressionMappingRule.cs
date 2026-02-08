@@ -30,18 +30,19 @@ public class ExpressionMappingRule : IMappingRule
     {
         // Expression is already SQL - use as-is with validation
         var expression = mapping.OldColumn.Trim();
-        
+
         // Validate brackets
         var openCount = expression.Count(c => c == '(');
         var closeCount = expression.Count(c => c == ')');
-        
+
         return new MappingResult
         {
             SqlExpression = expression,
             HasWarning = openCount != closeCount,
             Warning = openCount != closeCount 
                 ? "Expression may have mismatched parentheses" 
-                : string.Empty
+                : string.Empty,
+            MappingRuleType = nameof(ExpressionMappingRule)
         };
     }
 }

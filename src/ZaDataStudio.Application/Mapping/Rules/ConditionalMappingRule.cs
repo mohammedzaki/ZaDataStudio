@@ -31,7 +31,8 @@ public class ConditionalMappingRule : IMappingRule
             SqlExpression = expression,
             FullSqlExpression = fullExpression,
             HasWarning = !expression.Contains("END"),
-            Warning = !expression.Contains("END") ? "Conditional expression may be incomplete" : string.Empty
+            Warning = !expression.Contains("END") ? "Conditional expression may be incomplete" : string.Empty,
+            MappingRuleType = nameof(ConditionalMappingRule)
         };
     }
 
