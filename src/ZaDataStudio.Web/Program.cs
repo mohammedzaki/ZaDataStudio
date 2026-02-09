@@ -18,6 +18,7 @@ builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.Sql
 builder.Services.AddScoped<IDatabaseService>(sp => sp.GetRequiredService<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerDatabaseService>());
 
 // Register Application and Infrastructure services
+builder.Services.AddScoped<ILookupColumnAnalyzer, LookupColumnAnalyzer>();
 builder.Services.AddScoped<IMappingComparisonService, MappingComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Persistence.SqlServer.SqlServerComparisonService>();
 builder.Services.AddScoped<ZaDataStudio.Infrastructure.Excel.ExcelMappingService>();

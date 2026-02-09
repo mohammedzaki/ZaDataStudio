@@ -14,9 +14,10 @@ namespace ZaDataStudio.Domain.Entities
         public int SourceDistinctCount { get; set; }
         public string DestinationLookupQuery { get; set; } = string.Empty;
         public int DestinationDistinctCount { get; set; }
-        public List<string> SourceSampleValues { get; set; } = new();
-        public List<string> DestinationSampleValues { get; set; } = new();
+        public Dictionary<string, string> SourceSampleValues { get; set; } = new();
+        public Dictionary<string, string> DestinationSampleValues { get; set; } = new();
         public List<string> MismatchedValues { get; set; } = new();
+        public List<LookupValueMapping> ValuesMapping { get; set; } = new();
         public string AffectedRecordCountQuery { get; set; } = string.Empty;
 
         // New properties for lookup specification support
@@ -27,6 +28,14 @@ namespace ZaDataStudio.Domain.Entities
 
         public bool? HasError { get; set; }
         public string? ErrorMessage { get; set; }
+    }
+
+    public class LookupValueMapping
+    {
+        public string SourceCode { get; set; } = string.Empty;
+        public string SourceValue { get; set; } = string.Empty;
+        public string DestinationCode { get; set; } = string.Empty;
+        public string DestinationValue { get; set; } = string.Empty;
     }
 }
 

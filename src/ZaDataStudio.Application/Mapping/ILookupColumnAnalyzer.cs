@@ -1,10 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using ZaDataStudio.Domain.Entities;
 
-namespace ZaDataStudio.Application.Mapping
+namespace ZaDataStudio.Application.Mapping;
+
+/// <summary>
+/// Interface for analyzing lookup column mappings and comparing source/destination values
+/// </summary>
+public interface ILookupColumnAnalyzer
 {
-    internal interface ILookupColumnAnalyzer
-    {
-    }
+    /// <summary>
+    /// Analyze lookup column using mapping rule
+    /// </summary>
+    Task<LookupColumnAnalysis> AnalyzeLookupColumnAsync(
+        DataColumnMapping columnMapping,
+        string sourceConnectionString,
+        string destinationConnectionString);
+
+    /// <summary>
+    /// Analyze lookup column with specification format
+    /// Handles format: [ValueColumnName].[TableName].[ColumnName] = Value [ON [JoinColumnName]]
+    /// </summary>
+    Task<LookupColumnAnalysis> AnalyzeLookupColumnWithSpecAsync(
+        DataColumnMapping columnMapping,
+        string sourceConnectionString,
+        string destinationConnectionString);
 }

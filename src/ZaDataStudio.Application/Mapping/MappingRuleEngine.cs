@@ -71,7 +71,11 @@ public class MappingRuleEngine
     /// <summary>
     /// Generate complete migration SQL from configuration
     /// </summary>
-    public string GenerateMigrationSQL(DataMappingConfiguration config, bool includeTransaction = true)
+    public string GenerateMigrationSQL(
+        DataMappingConfiguration config,
+        MappingComparisonResult analysisResult,
+        List<DatatypeComparison> datatypeComparisons, 
+        bool includeTransaction = true)
     {
         var sql = new StringBuilder();
         

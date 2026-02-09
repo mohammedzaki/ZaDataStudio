@@ -318,11 +318,7 @@
                         <li>@excelMappingConfig.ColumnMappings.Count(m => m.MappingStatus == "Approved") approved mapping(s)</li>
                     </ul>
                     <div class="mt-2">
-                        <button class="btn btn-sm btn-primary" @onclick="GenerateExcelSQL">
-                            <span class="bi bi-file-code me-1"></span>
-                            Generate Migration SQL
-                        </button>
-                        <button class="btn btn-sm btn-info ms-2" @onclick="GenerateValidationReport">
+                        <button class="btn btn-sm btn-info" @onclick="GenerateValidationReport">
                             <span class="bi bi-clipboard-check me-1"></span>
                             Generate Validation Report
                         </button>
@@ -344,6 +340,18 @@
                         </button>
                         @if (excelComparisonResult != null && !isComparingExcelMappings)
                         {
+                            <button class="btn btn-sm btn-primary ms-2" @onclick="GenerateExcelSQL" disabled="@isGeneratingExcelSQL">
+                                @if (isGeneratingExcelSQL)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Generating...</span>
+                                }
+                                else
+                                {
+                                    <span class="bi bi-file-code me-1"></span>
+                                    <span>Generate Migration SQL</span>
+                                }
+                            </button>
                             <button class="btn btn-sm btn-info ms-2" @onclick="DownloadAnalysisExcel" disabled="@isExportingAnalysisExcel">
                                 @if (isExportingAnalysisExcel)
                                 {

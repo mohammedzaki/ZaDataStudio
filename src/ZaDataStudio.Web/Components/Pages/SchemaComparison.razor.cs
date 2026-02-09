@@ -55,6 +55,7 @@ public partial class SchemaComparison : ComponentBase
     private bool isComparingExcelMappings = false;
     private bool isUploadingExcel = false;
     private bool isExportingAnalysisExcel = false;
+    private bool isGeneratingExcelSQL = false;
     private MappingComparisonResult? excelComparisonResult;
     private IMappingComparisonService MappingComparisonService;
 
@@ -1026,13 +1027,31 @@ public partial class SchemaComparison : ComponentBase
             return;
         }
 
+        if (excelComparisonResult == null)
+        {
+            errorMessage = "No analysis results available to export.";
+            return;
+        }
+
+        isGeneratingExcelSQL = true;
+        errorMessage = string.Empty;
+        StateHasChanged(); // Force UI update to show spinner
+
         try
         {
-            excelGeneratedSQL = ExcelMappingService.GenerateMigrationSQL(excelMappingConfig);
+            excelGeneratedSQL = ExcelMappingService.GenerateMigrationSQL(
+                excelMappingConfig, 
+                excelComparisonResult,
+                excelComparisonResult.DatatypeComparisons);
         }
         catch (Exception ex)
         {
             errorMessage = $"Error generating SQL: {ex.Message}";
+        }
+        finally
+        {
+            isGeneratingExcelSQL = false;
+            StateHasChanged(); // Force UI update to hide spinner
         }
     }
 

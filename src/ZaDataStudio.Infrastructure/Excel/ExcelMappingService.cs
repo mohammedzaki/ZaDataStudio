@@ -198,10 +198,13 @@ public class ExcelMappingService
         return stream.ToArray();
     }
 
-    public string GenerateMigrationSQL(DataMappingConfiguration config)
+    public string GenerateMigrationSQL(
+        DataMappingConfiguration config,
+        MappingComparisonResult analysisResult,
+        List<DatatypeComparison> datatypeComparisons)
     {
         // Use the advanced rule engine for SQL generation
-        return _ruleEngine.GenerateMigrationSQL(config, includeTransaction: true);
+        return _ruleEngine.GenerateMigrationSQL(config, analysisResult, datatypeComparisons, includeTransaction: true);
     }
 
     public string GenerateValidationReport(DataMappingConfiguration config)
@@ -685,7 +688,7 @@ public class ExcelMappingService
                         break;
                     }
 
-                    sheet.Cell(row, 1).Value = value ?? "";
+                    sheet.Cell(row, 1).Value = value.Value ?? "";
                     sheet.Cell(row, 2).Value = "✓ In Destination";
                     sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
                     row++;
@@ -723,7 +726,7 @@ public class ExcelMappingService
 
             if (lookup.SourceSampleValues != null && lookup.SourceSampleValues.Any())
             {
-                var destValuesSet = (lookup.DestinationSampleValues ?? new List<string>())
+                var destValuesSet = (lookup.DestinationSampleValues?.Values.ToList() ?? new List<string>())
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var value in lookup.SourceSampleValues)
@@ -734,9 +737,9 @@ public class ExcelMappingService
                         break;
                     }
 
-                    sheet.Cell(row, 1).Value = value ?? "";
+                    sheet.Cell(row, 1).Value = value.Value ?? "";
 
-                    if (destValuesSet.Contains(value))
+                    if (destValuesSet.Contains(value.Value))
                     {
                         sheet.Cell(row, 2).Value = "✓ Match Found";
                         sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
