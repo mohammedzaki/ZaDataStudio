@@ -8,8 +8,6 @@ namespace ZaDataStudio.Application.Mapping.Rules;
 /// </summary>
 public class NullMappingRule : IMappingRule
 {
-    public int Priority => 1;
-
     public bool CanHandle(DataColumnMapping mapping)
     {
         return string.IsNullOrWhiteSpace(mapping.OldColumn) ||
@@ -22,14 +20,15 @@ public class NullMappingRule : IMappingRule
     {
         // Check if there's a default value in notes or mapping rule
         var defaultValue = ExtractDefaultValue(mapping);
-        
+
         return new MappingResult
         {
             SqlExpression = defaultValue ?? "NULL",
             HasWarning = defaultValue == null && !mapping.NewColumnNullable.GetValueOrDefault(true),
             Warning = defaultValue == null && !mapping.NewColumnNullable.GetValueOrDefault(true) 
                 ? $"Column {mapping.NewColumn} is NOT NULL but has no source mapping" 
-                : string.Empty
+                : string.Empty,
+            MappingRuleType = nameof(NullMappingRule)
         };
     }
 
@@ -39,7 +38,7 @@ public class NullMappingRule : IMappingRule
         var text = $"{mapping.MappingRule} {mapping.Notes}".ToLower();
         
         // Common patterns
-        if (text.Contains("getdate()") || text.Contains("current_timestamp"))
+        if (text.Contains("current_timestamp"))
             return "GETDATE()";
         
         if (text.Contains("newid()"))
@@ -47,9 +46,18 @@ public class NullMappingRule : IMappingRule
         
         if (text.Contains("0") && mapping.NewDataType?.Contains("INT") == true)
             return "0";
-        
+
+        if (text.Contains("true") && mapping.NewDataType?.Contains("bit") == true)
+            return "1";
+
+        if (text.Contains("false") && mapping.NewDataType?.Contains("bit") == true)
+            return "0";
+
         if (text.Contains("''") || text.Contains("empty string"))
             return "''";
+
+        if (text.Contains("{}") || text.Contains("empty string"))
+            return "'{}'";
 
         return null;
     }

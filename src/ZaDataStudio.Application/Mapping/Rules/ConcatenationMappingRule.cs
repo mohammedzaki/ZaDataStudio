@@ -9,8 +9,6 @@ namespace ZaDataStudio.Application.Mapping.Rules;
 /// </summary>
 public class ConcatenationMappingRule : IMappingRule
 {
-    public int Priority => 4;
-
     public bool CanHandle(DataColumnMapping mapping)
     {
         if (string.IsNullOrWhiteSpace(mapping.MappingRule))
@@ -25,10 +23,11 @@ public class ConcatenationMappingRule : IMappingRule
     {
         // Parse concatenation rule
         var expression = ParseConcatenation(mapping.MappingRule, mapping.OldTableName);
-        
+
         return new MappingResult
         {
-            SqlExpression = expression
+            SqlExpression = expression,
+            MappingRuleType = nameof(ConcatenationMappingRule)
         };
     }
 

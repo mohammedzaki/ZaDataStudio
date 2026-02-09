@@ -11,14 +11,9 @@ namespace ZaDataStudio.Application.Mapping.Rules;
 /// </summary>
 public class LookupMappingRule : IMappingRule
 {
-    public int Priority => 3;
-
     public bool CanHandle(DataColumnMapping mapping)
     {
-        return mapping.HasLookup || 
-               !string.IsNullOrWhiteSpace(mapping.NewLookupTable) ||
-               !string.IsNullOrWhiteSpace(mapping.OldLookupTable) ||
-               mapping.MappingRule?.Contains("lookup", StringComparison.OrdinalIgnoreCase) == true;
+        return mapping.HasLookup;
     }
 
     public MappingResult Apply(DataColumnMapping mapping, MappingContext context)

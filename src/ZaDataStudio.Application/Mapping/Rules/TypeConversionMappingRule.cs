@@ -8,8 +8,6 @@ namespace ZaDataStudio.Application.Mapping.Rules;
 /// </summary>
 public class TypeConversionMappingRule : IMappingRule
 {
-    public int Priority => 6;
-
     public bool CanHandle(DataColumnMapping mapping)
     {
         // Check if type conversion is needed
@@ -27,10 +25,11 @@ public class TypeConversionMappingRule : IMappingRule
     {
         var sourceExpr = GetSourceColumnExpression(mapping);
         var conversionExpr = GenerateConversion(sourceExpr, mapping.OldDataType, mapping.NewDataType);
-        
+
         return new MappingResult
         {
-            SqlExpression = conversionExpr
+            SqlExpression = conversionExpr,
+            MappingRuleType = nameof(TypeConversionMappingRule)
         };
     }
 

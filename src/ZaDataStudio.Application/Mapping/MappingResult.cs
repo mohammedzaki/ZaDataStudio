@@ -14,4 +14,5 @@ public class MappingResult
     public bool HasWarning { get; set; }
     public string Warning { get; set; } = string.Empty;
     public List<string> Dependencies { get; set; } = new();
+    public string MappingRuleType { get; set; } = string.Empty;
 }

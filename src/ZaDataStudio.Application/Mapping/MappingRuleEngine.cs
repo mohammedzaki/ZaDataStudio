@@ -17,9 +17,10 @@ public class MappingRuleEngine
         // Initialize rules in priority order (Chain of Responsibility)
         _rules =
         [
+            new ColumnToRowMappingRule(),
+            new LookupMappingRule(),
             new NullMappingRule(),
             new ExpressionMappingRule(),
-            //new LookupMappingRule(),
             new ConcatenationMappingRule(),
             new ConditionalMappingRule(),
             new TypeConversionMappingRule(),
@@ -46,7 +47,8 @@ public class MappingRuleEngine
         {
             SqlExpression = "NULL",
             HasWarning = true,
-            Warning = $"No rule could handle mapping for {mapping.NewColumn}"
+            Warning = $"No rule could handle mapping for {mapping.NewColumn}",
+            MappingRuleType = "NoRuleMatched"
         };
     }
 
@@ -119,7 +121,8 @@ public class MappingRuleEngine
     private string GenerateTableMigrationSQL(string tableName, List<DataColumnMapping> mappings, MappingContext context)
     {
         var sql = new StringBuilder();
-        
+        var rowsToColmunsPart = new StringBuilder();
+
         // Filter approved mappings
         var approvedMappings = mappings
             .Where(m => string.IsNullOrWhiteSpace(m.MappingStatus) || 
@@ -161,10 +164,11 @@ public class MappingRuleEngine
         // Process each column mapping
         var selectExpressions = new List<string>();
         var warnings = new List<string>();
-
         foreach (var mapping in approvedMappings)
         {
             var result = ProcessMapping(mapping, context);
+            if (result.MappingRuleType == nameof(ColumnToRowMappingRule))
+                rowsToColmunsPart.Append(result.FullSqlExpression);
             selectExpressions.Add($"    {result.SqlExpression} AS [{mapping.NewColumn}]");
             
             if (result.HasWarning)
@@ -209,6 +213,10 @@ public class MappingRuleEngine
         {
             sql.AppendLine(";");
         }
+
+        sql.AppendLine();
+        sql.AppendLine(rowsToColmunsPart.ToString());
+        rowsToColmunsPart.Clear();
 
         sql.AppendLine();
         sql.AppendLine($"-- Records inserted: @@ROWCOUNT");

@@ -71,8 +71,7 @@ public class ExcelMappingService
             var mappingStatus = row.Cell(15).GetString();
 
             // Skip empty rows
-            if ((string.IsNullOrWhiteSpace(newTableName) && string.IsNullOrWhiteSpace(newColumn)) 
-                || mappingStatus.Equals("OutOfScope", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(newTableName) && string.IsNullOrWhiteSpace(newColumn))
                 continue;
 
             var mapping = new DataColumnMapping

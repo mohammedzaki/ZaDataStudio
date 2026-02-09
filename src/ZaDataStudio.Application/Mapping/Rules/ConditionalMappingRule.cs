@@ -10,8 +10,6 @@ namespace ZaDataStudio.Application.Mapping.Rules;
 /// </summary>
 public class ConditionalMappingRule : IMappingRule
 {
-    public int Priority => 5;
-
     public bool CanHandle(DataColumnMapping mapping)
     {
         if (string.IsNullOrWhiteSpace(mapping.MappingRule))
@@ -31,7 +29,8 @@ public class ConditionalMappingRule : IMappingRule
             SqlExpression = expression,
             FullSqlExpression = fullExpression,
             HasWarning = !expression.Contains("END"),
-            Warning = !expression.Contains("END") ? "Conditional expression may be incomplete" : string.Empty
+            Warning = !expression.Contains("END") ? "Conditional expression may be incomplete" : string.Empty,
+            MappingRuleType = nameof(ConditionalMappingRule)
         };
     }
 

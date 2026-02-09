@@ -10,7 +10,6 @@ namespace ZaDataStudio.Application.Mapping;
 /// </summary>
 public interface IMappingRule
 {
-    int Priority { get; }
     bool CanHandle(DataColumnMapping mapping);
     MappingResult Apply(DataColumnMapping mapping, MappingContext context);
 }

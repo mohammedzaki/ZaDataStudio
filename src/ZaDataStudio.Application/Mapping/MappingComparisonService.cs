@@ -51,46 +51,48 @@ public class MappingComparisonService : IMappingComparisonService
                     continue;
 
                 // 1. Check lookup columns (with new format support)
-                if (columnMapping.HasLookup ||
-                    !string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) ||
-                    !string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
+                if (columnMapping.HasLookup)
                 {
-                    try
+                    if (!string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) ||
+                        !string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
                     {
-                        var lookupAnalysis = await AnalyzeLookupColumnWithSpec(columnMapping);
+                        try
+                        {
+                            var lookupAnalysis = await AnalyzeLookupColumnWithSpec(columnMapping);
 
-                        lookupAnalysis.SourceTable = columnMapping.OldTableName;
-                        lookupAnalysis.SourceColumn = columnMapping.OldColumn;
-                        lookupAnalysis.TableName = destTableName;
-                        lookupAnalysis.ColumnName = columnMapping.NewColumn;
+                            lookupAnalysis.SourceTable = columnMapping.OldTableName;
+                            lookupAnalysis.SourceColumn = columnMapping.OldColumn;
+                            lookupAnalysis.TableName = destTableName;
+                            lookupAnalysis.ColumnName = columnMapping.NewColumn;
 
-                        comparisonResult.LookupAnalysis.Add(lookupAnalysis);
+                            comparisonResult.LookupAnalysis.Add(lookupAnalysis);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                        }
                     }
-                    catch (Exception ex)
+                    else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
                     {
-                        Console.WriteLine($"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
-                    }
-                }
-                else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
-                {
-                    // If there's a mapping rule, try to analyze as lookup
-                    try
-                    {
-                        var lookupAnalysis = await AnalyzeLookupColumn(columnMapping);
-                        lookupAnalysis.SourceTable = columnMapping.OldTableName;
-                        lookupAnalysis.SourceColumn = columnMapping.OldColumn;
-                        lookupAnalysis.TableName = destTableName;
-                        lookupAnalysis.ColumnName = columnMapping.NewColumn;
-                        comparisonResult.LookupAnalysis.Add(lookupAnalysis);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error analyzing mapping rule lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                        // If there's a mapping rule, try to analyze as lookup
+                        try
+                        {
+                            var lookupAnalysis = await AnalyzeLookupColumn(columnMapping);
+                            lookupAnalysis.SourceTable = columnMapping.OldTableName;
+                            lookupAnalysis.SourceColumn = columnMapping.OldColumn;
+                            lookupAnalysis.TableName = destTableName;
+                            lookupAnalysis.ColumnName = columnMapping.NewColumn;
+                            comparisonResult.LookupAnalysis.Add(lookupAnalysis);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error analyzing mapping rule lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
+                        }
                     }
                 }
 
                 // 2. Compare datatypes (skip if has mapping rule or is lookup)
-                if (string.IsNullOrWhiteSpace(columnMapping.MappingRule) && 
+                if (string.IsNullOrWhiteSpace(columnMapping.MappingRule) &&
                     !columnMapping.HasLookup &&
                     string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) &&
                     string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
@@ -142,7 +144,8 @@ public class MappingComparisonService : IMappingComparisonService
         {
             analysis.SourceSampleValues.Add(srcReader[0]?.ToString() ?? "");
         }
-        
+        await srcReader.DisposeAsync();
+
         // Get distinct count - reuses same connection
         var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
         var countResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, countQuery);
@@ -160,7 +163,8 @@ public class MappingComparisonService : IMappingComparisonService
         {
             analysis.DestinationSampleValues.Add(destReader[0]?.ToString() ?? "");
         }
-        
+        await destReader.DisposeAsync();
+
         // Get distinct count - reuses same connection
         var destCountQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
         var destCountResult = await _databaseService.ExecuteScalarAsync(_destinationConnectionString, destCountQuery);
@@ -231,7 +235,7 @@ public class MappingComparisonService : IMappingComparisonService
                     oldLookupSpec.FilterValue != newLookupSpec.FilterValue)
                 {
                     analysis.LookupFilterMismatch = true;
-                    analysis.LookupFilterMessage = 
+                    analysis.LookupFilterMessage =
                         $"Lookup filter mismatch: Old={oldLookupSpec.FilterValue}, New={newLookupSpec.FilterValue}";
                 }
             }
@@ -263,7 +267,7 @@ public class MappingComparisonService : IMappingComparisonService
                     GROUP BY [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}]
                     ORDER BY RecordCount DESC";
             }
-            else 
+            else
             {
                 countQuery = $@"
                     SELECT [{sourceColumnName}], [{sourceColumnName}], COUNT(*) as RecordCount
@@ -318,13 +322,14 @@ public class MappingComparisonService : IMappingComparisonService
         List<string> targetList,
         bool isSource)
     {
-        async Task<bool> ExecuteQuery(string sqlQuery) 
+        async Task<bool> ExecuteQuery(string sqlQuery)
         {
             using var reader = await _databaseService.ExecuteReaderAsync(connectionString, sqlQuery);
             while (await reader.ReadAsync())
             {
                 targetList.Add(reader[0]?.ToString() ?? "");
             }
+            await reader.DisposeAsync();
             return true;
         }
 
@@ -385,8 +390,11 @@ public class MappingComparisonService : IMappingComparisonService
             SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName AND COLUMN_NAME = @columnName";
+        var maxLenQuery = @$"SELECT MAX(LEN({sourceColumn})) AS MaxLength FROM {(sourceTable.Contains(".") ? sourceTable.Split('.')[0].Replace("[", "").Replace("]", "") : "dbo")}.{sourceTable};";
 
         // Get actual datatypes from source database using database service - connection reused
+        var srcMaxLenResult = await _databaseService.ExecuteScalarAsync(_sourceConnectionString, maxLenQuery);
+        var srcMaxLength = srcMaxLenResult == null ? (int?)null : Convert.ToInt32(srcMaxLenResult);
 
         using var srcReader = await _databaseService.ExecuteReaderAsync(_sourceConnectionString, query, cmd =>
         {
@@ -399,12 +407,13 @@ public class MappingComparisonService : IMappingComparisonService
         if (await srcReader.ReadAsync())
         {
             var dataType = srcReader.GetString(0);
-            var maxLength = srcReader.IsDBNull(1) ? (int?)null : srcReader.GetInt32(1);
+            //var maxLength = srcReader.IsDBNull(1) ? (int?)null : srcReader.GetInt32(1);
             var precision = srcReader.IsDBNull(2) ? (byte?)null : srcReader.GetByte(2);
             var scale = srcReader.IsDBNull(3) ? (int?)null : srcReader.GetInt32(3);
 
-            comparison.SourceDataType = FormatDataType(dataType, maxLength, precision, scale);
+            comparison.SourceDataType = FormatDataType(dataType, srcMaxLength, precision, scale);
         }
+        await srcReader.DisposeAsync();
 
         // Get actual datatypes from destination database using database service - connection reused
         using var destReader = await _databaseService.ExecuteReaderAsync(_destinationConnectionString, query, cmd =>
