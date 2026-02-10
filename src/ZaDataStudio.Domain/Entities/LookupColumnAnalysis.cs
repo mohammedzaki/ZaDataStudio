@@ -32,10 +32,10 @@ namespace ZaDataStudio.Domain.Entities
 
     public class LookupValueMapping
     {
-        public string SourceCode { get; set; } = string.Empty;
-        public string SourceValue { get; set; } = string.Empty;
-        public string DestinationCode { get; set; } = string.Empty;
-        public string DestinationValue { get; set; } = string.Empty;
+        public string SourceLookupCode { get; set; } = string.Empty;
+        public string SourceLookupValue { get; set; } = string.Empty;
+        public string DestinationLookupCode { get; set; } = string.Empty;
+        public string DestinationLookupValue { get; set; } = string.Empty;
     }
 }
 

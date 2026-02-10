@@ -491,6 +491,113 @@
                                                 }
                                             </div>
                                         </div>
+
+                                        @* Values Mapping Table *@
+                                        @if (lookup.ValuesMapping.Any())
+                                        {
+                                            <div class="mt-3">
+                                                <h6>
+                                                    <span class="bi bi-arrow-left-right me-2"></span>
+                                                    Values Mapping (@lookup.ValuesMapping.Count values)
+                                                </h6>
+                                                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                                    <table class="table table-sm table-bordered table-hover">
+                                                        <thead class="table-light sticky-top">
+                                                            <tr>
+                                                                <th>Source Lookup Code</th>
+                                                                <th>Source Lookup Value</th>
+                                                                <th class="text-center">
+                                                                    <span class="bi bi-arrow-right"></span>
+                                                                </th>
+                                                                <th>Destination Lookup Code</th>
+                                                                <th>Destination Lookup Value</th>
+                                                                <th class="text-center">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var mapping in lookup.ValuesMapping)
+                                                            {
+                                                                var isMatched = !string.IsNullOrEmpty(mapping.DestinationLookupValue);
+                                                                <tr class="@(isMatched ? "" : "table-warning")">
+                                                                    <td>
+                                                                        <code class="small">@mapping.SourceLookupCode</code>
+                                                                    </td>
+                                                                    <td>@mapping.SourceLookupValue</td>
+                                                                    <td class="text-center">
+                                                                        @if (isMatched)
+                                                                        {
+                                                                            <span class="bi bi-arrow-right text-success"></span>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="bi bi-x-circle text-warning"></span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>
+                                                                        @if (isMatched)
+                                                                        {
+                                                                            <code class="small">@mapping.DestinationLookupCode</code>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="text-muted">-</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>
+                                                                        @if (isMatched)
+                                                                        {
+                                                                            @mapping.DestinationLookupValue
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="text-muted fst-italic">No match</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td class="text-center">
+                                                                        @if (isMatched)
+                                                                        {
+                                                                            <span class="badge bg-success">
+                                                                                <span class="bi bi-check-circle me-1"></span>
+                                                                                Matched
+                                                                            </span>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="badge bg-warning text-dark">
+                                                                                <span class="bi bi-exclamation-triangle me-1"></span>
+                                                                                Missing
+                                                                            </span>
+                                                                        }
+                                                                    </td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                        <tfoot class="table-light sticky-bottom">
+                                                            <tr>
+                                                                <td colspan="5" class="text-end">
+                                                                    <strong>Summary:</strong>
+                                                                    <span class="badge bg-success ms-2">
+                                                                        @lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupValue)) Matched
+                                                                    </span>
+                                                                    <span class="badge bg-warning text-dark ms-1">
+                                                                        @lookup.ValuesMapping.Count(m => string.IsNullOrEmpty(m.DestinationLookupValue)) Missing
+                                                                    </span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    @{
+                                                                        var matchedCount = lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupValue));
+                                                                        var totalCount = lookup.ValuesMapping.Count;
+                                                                        var percentage = totalCount > 0 ? (matchedCount * 100.0 / totalCount) : 0;
+                                                                    }
+                                                                    <strong>@percentage.ToString("F1")%</strong>
+                                                                </td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        }
+
                                         @if (lookup.MismatchedValues.Any())
                                         {
                                             <div class="alert alert-warning mt-2">
@@ -1432,3 +1539,42 @@
         </div>
     </div>
 }
+
+<style>
+    /* Sticky table headers and footers */
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #f8f9fa;
+    }
+
+    .sticky-bottom {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        background-color: #f8f9fa;
+    }
+
+    /* Better scrollable tables */
+    .table-responsive {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+
+    /* Hover effect for mapping table rows */
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.1);
+    }
+
+    /* Style for mismatched rows */
+    .table-warning td {
+        background-color: #fff3cd;
+    }
+
+    /* Badge styling adjustments */
+    .badge {
+        font-size: 0.75rem;
+        padding: 0.35em 0.65em;
+    }
+</style>

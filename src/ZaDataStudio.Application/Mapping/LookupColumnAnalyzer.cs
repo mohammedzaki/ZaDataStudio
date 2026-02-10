@@ -79,6 +79,9 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             .Where(v => !destValuesSet.Contains(v))
             .ToList();
 
+        // Build values mapping for matched and unmatched values
+        BuildValuesMapping(analysis);
+
         return analysis;
     }
 
@@ -215,6 +218,9 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
         }
 
+        // Build values mapping for matched and unmatched values
+        BuildValuesMapping(analysis);
+
         return analysis;
     }
 
@@ -244,7 +250,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             var sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
             if (string.IsNullOrWhiteSpace(sqlExpression))
                 sqlExpression = $@"
-                    SELECT DISTINCT [{columnMapping.OldColumn}], [{columnMapping.OldColumn}]
+                    SELECT DISTINCT [{columnMapping.OldColumn}] AS LookupCode, [{columnMapping.OldColumn}] AS LookupValue
                     FROM {FormatTableName(columnMapping.OldTableName)}
                     ORDER BY [{columnMapping.OldColumn}]";
 
@@ -261,6 +267,49 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             ORDER BY [{spec.ValueColumnName}]";
             var lookupQuery = LookupSpecificationParser.GenerateLookupQuery(spec);
             return (await ExecuteQuery(sqlExpression), lookupQuery);
+        }
+    }
+
+    /// <summary>
+    /// Build values mapping showing matched and unmatched values
+    /// </summary>
+    private void BuildValuesMapping(LookupColumnAnalysis analysis)
+    {
+        analysis.ValuesMapping.Clear();
+
+        // Create a dictionary for quick destination lookup by value (case-insensitive)
+        var destByValue = new Dictionary<string, (string code, string value)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dest in analysis.DestinationSampleValues)
+        {
+            if (!destByValue.ContainsKey(dest.Value))
+            {
+                destByValue[dest.Value] = (dest.Key, dest.Value);
+            }
+        }
+
+        // Map all source values
+        foreach (var source in analysis.SourceSampleValues)
+        {
+            var mapping = new LookupValueMapping
+            {
+                SourceLookupCode = source.Key,
+                SourceLookupValue = source.Value
+            };
+
+            // Try to find matching destination value (case-insensitive)
+            if (destByValue.TryGetValue(source.Value, out var destMatch))
+            {
+                mapping.DestinationLookupCode = destMatch.code;
+                mapping.DestinationLookupValue = destMatch.value;
+            }
+            else
+            {
+                // No match found - set destination as empty/null
+                mapping.DestinationLookupCode = string.Empty;
+                mapping.DestinationLookupValue = string.Empty;
+            }
+
+            analysis.ValuesMapping.Add(mapping);
         }
     }
 
