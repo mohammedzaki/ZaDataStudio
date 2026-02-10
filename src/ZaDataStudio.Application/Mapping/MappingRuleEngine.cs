@@ -18,7 +18,7 @@ public class MappingRuleEngine
         _rules =
         [
             new ColumnToRowMappingRule(),
-            new LookupMappingRule(),
+            //new LookupMappingRule(),
             new NullMappingRule(),
             new ExpressionMappingRule(),
             new ConcatenationMappingRule(),
@@ -74,15 +74,21 @@ public class MappingRuleEngine
     public string GenerateMigrationSQL(
         DataMappingConfiguration config,
         MappingComparisonResult analysisResult,
-        List<DatatypeComparison> datatypeComparisons, 
+        List<DatatypeComparison> datatypeComparisons,
+        string sourceDatabase = "",
+        string destinationDatabase = "",
         bool includeTransaction = true)
     {
         var sql = new StringBuilder();
-        
+
         // Header
         sql.AppendLine("-- =====================================================");
         sql.AppendLine("-- Advanced Data Migration SQL");
         sql.AppendLine($"-- Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        if (!string.IsNullOrWhiteSpace(sourceDatabase))
+            sql.AppendLine($"-- Source Database: {sourceDatabase}");
+        if (!string.IsNullOrWhiteSpace(destinationDatabase))
+            sql.AppendLine($"-- Destination Database: {destinationDatabase}");
         sql.AppendLine($"-- Total Tables: {config.GroupedByTable.Count}");
         sql.AppendLine($"-- Total Columns: {config.ColumnMappings.Count}");
         sql.AppendLine("-- =====================================================");
@@ -103,7 +109,13 @@ public class MappingRuleEngine
                 AllMappings = tableGroup.Value
             };
 
-            var tableResult = GenerateTableMigrationSQL(tableGroup.Key, tableGroup.Value, context);
+            var tableResult = GenerateTableMigrationSQL(
+                tableGroup.Key, 
+                tableGroup.Value, 
+                context, 
+                analysisResult,
+                sourceDatabase,
+                destinationDatabase);
             sql.AppendLine(tableResult);
         }
 
@@ -122,7 +134,13 @@ public class MappingRuleEngine
         return sql.ToString();
     }
 
-    private string GenerateTableMigrationSQL(string tableName, List<DataColumnMapping> mappings, MappingContext context)
+    private string GenerateTableMigrationSQL(
+        string tableName, 
+        List<DataColumnMapping> mappings, 
+        MappingContext context,
+        MappingComparisonResult? analysisResult = null,
+        string sourceDatabase = "",
+        string destinationDatabase = "")
     {
         var sql = new StringBuilder();
         var rowsToColmunsPart = new StringBuilder();
@@ -160,25 +178,50 @@ public class MappingRuleEngine
 
         // Generate INSERT
         var destColumns = approvedMappings.Select(m => $"[{m.NewColumn}]").ToList();
-        
-        sql.AppendLine($"INSERT INTO {FormatTableName(tableName)}");
+
+        sql.AppendLine($"INSERT INTO {FormatTableName(tableName, destinationDatabase)}");
         sql.AppendLine($"    ({string.Join(", ", destColumns)})");
         sql.AppendLine("SELECT");
 
         // Process each column mapping
         var selectExpressions = new List<string>();
         var warnings = new List<string>();
+
         foreach (var mapping in approvedMappings)
         {
-            var result = ProcessMapping(mapping, context);
-            if (result.MappingRuleType == nameof(ColumnToRowMappingRule))
-                rowsToColmunsPart.Append(result.FullSqlExpression);
-            selectExpressions.Add($"    {result.SqlExpression} AS [{mapping.NewColumn}]");
-            
-            if (result.HasWarning)
+            string sqlExpression;
+
+            // Check if this mapping has lookup analysis with ValuesMapping
+            var lookupAnalysis = analysisResult?.LookupAnalysis?.FirstOrDefault(la =>
+                la.TableName == mapping.NewTableName && 
+                la.ColumnName == mapping.NewColumn &&
+                la.ValuesMapping != null && 
+                la.ValuesMapping.Any());
+
+            if (lookupAnalysis != null)
             {
-                warnings.Add($"-- WARNING [{mapping.NewColumn}]: {result.Warning}");
+                // Generate CASE WHEN statement from ValuesMapping
+                sqlExpression = GenerateLookupCaseWhen(mapping, lookupAnalysis, sourceDatabase);
             }
+            else
+            {
+                // Use regular rule engine
+                var result = ProcessMapping(mapping, context);
+
+                if (result.MappingRuleType == nameof(ColumnToRowMappingRule))
+                {
+                    rowsToColmunsPart.Append(result.FullSqlExpression);
+                }
+
+                sqlExpression = result.SqlExpression;
+
+                if (result.HasWarning)
+                {
+                    warnings.Add($"-- WARNING [{mapping.NewColumn}]: {result.Warning}");
+                }
+            }
+
+            selectExpressions.Add($"    {sqlExpression} AS [{mapping.NewColumn}]");
         }
 
         sql.AppendLine(string.Join($",{Environment.NewLine}", selectExpressions));
@@ -187,14 +230,14 @@ public class MappingRuleEngine
         if (sourceTables.Any())
         {
             var primaryTable = sourceTables.First();
-            sql.AppendLine($"FROM {FormatTableName(primaryTable)} AS {GetTableAlias(primaryTable)}");
+            sql.AppendLine($"FROM {FormatTableName(primaryTable, sourceDatabase)} AS {GetTableAlias(primaryTable)}");
 
             // Add JOINs for additional tables
             for (int i = 1; i < sourceTables.Count; i++)
             {
                 var joinTable = sourceTables[i];
                 sql.AppendLine($"    -- TODO: Define JOIN condition for {joinTable}");
-                sql.AppendLine($"    LEFT JOIN {FormatTableName(joinTable)} AS {GetTableAlias(joinTable)}");
+                sql.AppendLine($"    LEFT JOIN {FormatTableName(joinTable, sourceDatabase)} AS {GetTableAlias(joinTable)}");
                 sql.AppendLine($"        ON {GetTableAlias(primaryTable)}.KeyColumn = {GetTableAlias(joinTable)}.KeyColumn");
             }
         }
@@ -209,8 +252,8 @@ public class MappingRuleEngine
         {
             var keyCol = keyColumns.First();
             sql.AppendLine("WHERE NOT EXISTS (");
-            sql.AppendLine($"    SELECT 1 FROM {FormatTableName(tableName)} dest");
-            sql.AppendLine($"    WHERE dest.[{keyCol.NewColumn}] = {GetSourceExpression(keyCol)}");
+            sql.AppendLine($"    SELECT 1 FROM {FormatTableName(tableName, destinationDatabase)} dest");
+            sql.AppendLine($"    WHERE dest.[{keyCol.NewColumn}] = {GetSourceExpression(keyCol, sourceDatabase)}");
             sql.AppendLine(");");
         }
         else
@@ -240,7 +283,84 @@ public class MappingRuleEngine
         return sql.ToString();
     }
 
-    private string GetSourceExpression(DataColumnMapping mapping)
+    /// <summary>
+    /// Generate CASE WHEN statement for lookup mappings using ValuesMapping
+    /// </summary>
+    private string GenerateLookupCaseWhen(DataColumnMapping mapping, LookupColumnAnalysis lookupAnalysis, string sourceDatabase = "")
+    {
+        if (lookupAnalysis.ValuesMapping == null || !lookupAnalysis.ValuesMapping.Any())
+        {
+            return "NULL -- No lookup mappings found";
+        }
+
+        var sql = new StringBuilder();
+        var sourceExpression = GetSourceExpression(mapping, sourceDatabase);
+
+        sql.AppendLine("CASE");
+
+        // Generate WHEN clauses for matched values
+        var matchedMappings = lookupAnalysis.ValuesMapping
+            .Where(vm => !string.IsNullOrEmpty(vm.DestinationLookupValue))
+            .ToList();
+
+        foreach (var valueMap in matchedMappings)
+        {
+            // Handle NULL source codes
+            if (string.IsNullOrEmpty(valueMap.SourceLookupCode) || 
+                valueMap.SourceLookupCode.Equals("NULL", StringComparison.OrdinalIgnoreCase))
+            {
+                sql.AppendLine($"        WHEN {sourceExpression} IS NULL THEN '{EscapeSql(valueMap.DestinationLookupCode)}'");
+            }
+            else if (IsNumeric(valueMap.SourceLookupCode))
+            {
+                sql.AppendLine($"        WHEN {sourceExpression} IN ({valueMap.SourceLookupCode}) THEN '{EscapeSql(valueMap.DestinationLookupCode)}'");
+            }
+            else
+            {
+                sql.AppendLine($"        WHEN {sourceExpression} IN ('{EscapeSql(valueMap.SourceLookupCode)}') THEN '{EscapeSql(valueMap.DestinationLookupCode)}'");
+            }
+        }
+
+        sql.Append("        ELSE NULL -- Unmapped value");
+
+        // Add comment about unmapped values if any exist
+        var unmappedCount = lookupAnalysis.ValuesMapping.Count - matchedMappings.Count;
+        if (unmappedCount > 0)
+        {
+            sql.Append($" ({unmappedCount} unmapped value(s))");
+        }
+
+        sql.AppendLine();
+        sql.Append("    END");
+
+        return sql.ToString();
+    }
+
+    /// <summary>
+    /// Escape single quotes in SQL string literals
+    /// </summary>
+    private string EscapeSql(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        return value.Replace("'", "''");
+    }
+
+    /// <summary>
+    /// Check if a string represents a numeric value
+    /// </summary>
+    private bool IsNumeric(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return int.TryParse(value, out _) || 
+               long.TryParse(value, out _) || 
+               decimal.TryParse(value, out _);
+    }
+
+    private string GetSourceExpression(DataColumnMapping mapping, string sourceDatabase = "")
     {
         if (string.IsNullOrWhiteSpace(mapping.OldColumn) || 
             mapping.OldColumn.Equals("N/A", StringComparison.OrdinalIgnoreCase))
@@ -271,16 +391,45 @@ public class MappingRuleEngine
         return alias;
     }
 
-    private string FormatTableName(string tableName)
+    private string FormatTableName(string tableName, string databaseName = "")
     {
         if (string.IsNullOrWhiteSpace(tableName))
             return tableName;
-        
-        if (tableName.StartsWith("[") && tableName.Contains("].["))
+
+        // If table name already includes database (3-part name), return as is
+        if (tableName.StartsWith("[") && tableName.Split('.').Length >= 3)
             return tableName;
-        
+
         var cleanName = tableName.Replace("[", "").Replace("]", "");
         var parts = cleanName.Split('.');
-        return string.Join(".", parts.Select(p => $"[{p}]"));
+
+        // Build the formatted name
+        if (!string.IsNullOrWhiteSpace(databaseName))
+        {
+            // Include database name: [Database].[Schema].[Table]
+            if (parts.Length >= 2)
+            {
+                // Table name already has schema
+                return $"[{databaseName}].[{parts[0]}].[{parts[1]}]";
+            }
+            else
+            {
+                // Add default schema (dbo)
+                return $"[{databaseName}].[dbo].[{parts[0]}]";
+            }
+        }
+        else
+        {
+            // No database name provided: [Schema].[Table]
+            if (parts.Length >= 2)
+            {
+                return $"[{parts[0]}].[{parts[1]}]";
+            }
+            else
+            {
+                // Add default schema (dbo)
+                return $"[dbo].[{parts[0]}]";
+            }
+        }
     }
 }

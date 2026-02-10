@@ -1039,10 +1039,16 @@ public partial class SchemaComparison : ComponentBase
 
         try
         {
+            // Extract database names from connection strings
+            var sourceDb = ExtractDatabaseName(sourceConnectionString);
+            var destDb = ExtractDatabaseName(destinationConnectionString);
+
             excelGeneratedSQL = ExcelMappingService.GenerateMigrationSQL(
                 excelMappingConfig, 
                 excelComparisonResult,
-                excelComparisonResult.DatatypeComparisons);
+                excelComparisonResult.DatatypeComparisons,
+                sourceDb,
+                destDb);
         }
         catch (Exception ex)
         {
@@ -1052,6 +1058,25 @@ public partial class SchemaComparison : ComponentBase
         {
             isGeneratingExcelSQL = false;
             StateHasChanged(); // Force UI update to hide spinner
+        }
+    }
+
+    /// <summary>
+    /// Extract database name from SQL Server connection string
+    /// </summary>
+    private string ExtractDatabaseName(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return string.Empty;
+
+        try
+        {
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            return builder.InitialCatalog;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 

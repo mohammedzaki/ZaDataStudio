@@ -58,7 +58,7 @@ public class LookupMappingRule : IMappingRule
         // Fallback: comment for manual implementation
         return new MappingResult
         {
-            SqlExpression = $"/* TODO: Implement lookup for {mapping.OldColumn} */ NULL",
+            SqlExpression = $"NULL",
             HasWarning = true,
             Warning = $"Lookup required but details not provided for {mapping.NewColumn}"
         };

@@ -201,10 +201,18 @@ public class ExcelMappingService
     public string GenerateMigrationSQL(
         DataMappingConfiguration config,
         MappingComparisonResult analysisResult,
-        List<DatatypeComparison> datatypeComparisons)
+        List<DatatypeComparison> datatypeComparisons,
+        string sourceDatabase = "",
+        string destinationDatabase = "")
     {
         // Use the advanced rule engine for SQL generation
-        return _ruleEngine.GenerateMigrationSQL(config, analysisResult, datatypeComparisons, includeTransaction: true);
+        return _ruleEngine.GenerateMigrationSQL(
+            config, 
+            analysisResult, 
+            datatypeComparisons, 
+            sourceDatabase,
+            destinationDatabase,
+            includeTransaction: true);
     }
 
     public string GenerateValidationReport(DataMappingConfiguration config)
@@ -769,6 +777,79 @@ public class ExcelMappingService
             }
 
             row += 2; // Blank rows
+
+            // Values Mapping Section
+            if (lookup.ValuesMapping != null && lookup.ValuesMapping.Any())
+            {
+                sheet.Cell(row, 1).Value = "VALUES MAPPING";
+                sheet.Cell(row, 1).Style.Font.Bold = true;
+                sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+                sheet.Range(row, 1, row, 5).Merge();
+                row++;
+
+                // Table headers
+                sheet.Cell(row, 1).Value = "Source Code";
+                sheet.Cell(row, 2).Value = "Source Value";
+                sheet.Cell(row, 3).Value = "Destination Code";
+                sheet.Cell(row, 4).Value = "Destination Value";
+                sheet.Cell(row, 5).Value = "Status";
+                sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
+                sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightGray;
+                row++;
+
+                var matchedCount = 0;
+                var missingCount = 0;
+
+                foreach (var valueMap in lookup.ValuesMapping)
+                {
+                    if (row > maxRow - 100) // Leave some buffer
+                    {
+                        sheet.Cell(row, 1).Value = $"... truncated, {lookup.ValuesMapping.Count - (row - (lookup.ValuesMapping.Count + row))} more rows";
+                        sheet.Range(row, 1, row, 5).Merge();
+                        break;
+                    }
+
+                    var isMatched = !string.IsNullOrEmpty(valueMap.DestinationLookupValue);
+
+                    sheet.Cell(row, 1).Value = valueMap.SourceLookupCode ?? "";
+                    sheet.Cell(row, 2).Value = valueMap.SourceLookupValue ?? "";
+                    sheet.Cell(row, 3).Value = isMatched ? (valueMap.DestinationLookupCode ?? "") : "-";
+                    sheet.Cell(row, 4).Value = isMatched ? (valueMap.DestinationLookupValue ?? "") : "No match";
+                    sheet.Cell(row, 5).Value = isMatched ? "✓ Matched" : "✗ Missing";
+
+                    // Color code the row
+                    if (isMatched)
+                    {
+                        sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                        matchedCount++;
+                    }
+                    else
+                    {
+                        sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                        sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.Yellow;
+                        missingCount++;
+                    }
+
+                    row++;
+                }
+
+                // Summary footer
+                sheet.Cell(row, 1).Value = "SUMMARY";
+                sheet.Cell(row, 1).Style.Font.Bold = true;
+                sheet.Cell(row, 2).Value = $"{matchedCount} Matched";
+                sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                sheet.Cell(row, 3).Value = $"{missingCount} Missing";
+                sheet.Cell(row, 3).Style.Fill.BackgroundColor = XLColor.Yellow;
+
+                var totalCount = matchedCount + missingCount;
+                var percentage = totalCount > 0 ? (matchedCount * 100.0 / totalCount) : 0;
+                sheet.Cell(row, 4).Value = $"{percentage:F1}%";
+                sheet.Cell(row, 4).Style.Font.Bold = true;
+                sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
+                row++;
+
+                row += 2; // Extra blank rows
+            }
 
             // Summary statistics
             sheet.Cell(row, 1).Value = "SUMMARY";
