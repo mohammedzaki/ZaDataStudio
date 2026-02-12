@@ -13,7 +13,8 @@ public class NullMappingRule : IMappingRule
         return string.IsNullOrWhiteSpace(mapping.OldColumn) ||
                mapping.OldColumn.Equals("N/A", StringComparison.OrdinalIgnoreCase) ||
                string.IsNullOrWhiteSpace(mapping.OldTableName) ||
-               mapping.OldTableName.Equals("N/A", StringComparison.OrdinalIgnoreCase);
+               mapping.OldTableName.Equals("N/A", StringComparison.OrdinalIgnoreCase) ||
+               mapping.MappingRule.Equals("NULL", StringComparison.OrdinalIgnoreCase);
     }
 
     public MappingResult Apply(DataColumnMapping mapping, MappingContext context)

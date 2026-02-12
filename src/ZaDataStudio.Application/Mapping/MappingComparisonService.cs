@@ -77,7 +77,7 @@ public class MappingComparisonService : IMappingComparisonService
                             Console.WriteLine($"Error analyzing lookup {destTableName}.{columnMapping.NewColumn}: {ex.Message}");
                         }
                     }
-                    else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
+                    else if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule) && columnMapping.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase))
                     {
                         // If there's a mapping rule, try to analyze as lookup
                         try
@@ -104,7 +104,8 @@ public class MappingComparisonService : IMappingComparisonService
                 if (string.IsNullOrWhiteSpace(columnMapping.MappingRule) &&
                     !columnMapping.HasLookup &&
                     string.IsNullOrWhiteSpace(columnMapping.NewLookupTable) &&
-                    string.IsNullOrWhiteSpace(columnMapping.OldLookupTable))
+                    string.IsNullOrWhiteSpace(columnMapping.OldLookupTable) ||
+                    columnMapping.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {

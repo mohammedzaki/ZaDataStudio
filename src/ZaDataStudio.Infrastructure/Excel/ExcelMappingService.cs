@@ -68,7 +68,6 @@ public class ExcelMappingService
         {
             var newTableName = row.Cell(1).GetString();
             var newColumn = row.Cell(2).GetString();
-            var mappingStatus = row.Cell(15).GetString();
 
             // Skip empty rows
             if (string.IsNullOrWhiteSpace(newTableName) && string.IsNullOrWhiteSpace(newColumn))
@@ -83,14 +82,15 @@ public class ExcelMappingService
                 HasLookup = ParseBoolean(row.Cell(5).GetString()),
                 NewLookupTable = row.Cell(6).GetString(),
                 NewColumnDescription = row.Cell(7).GetString(),
-                OldTableName = FormatName(row.Cell(8).GetString()),
-                OldColumn = FormatName(row.Cell(9).GetString()),
-                OldDataType = row.Cell(10).GetString(),
-                OldColumnNullable = ParseNullable(row.Cell(11).GetString()),
-                OldLookupTable = row.Cell(12).GetString(),
-                MappingRule = row.Cell(13).GetString(),
-                Notes = row.Cell(14).GetString(),
-                MappingStatus = row.Cell(15).GetString(),
+                InsertOrder = ParseInsertOrder(row.Cell(8).GetString()),
+                OldTableName = FormatName(row.Cell(9).GetString()),
+                OldColumn = FormatName(row.Cell(10).GetString()),
+                OldDataType = row.Cell(11).GetString(),
+                OldColumnNullable = ParseNullable(row.Cell(12).GetString()),
+                OldLookupTable = row.Cell(13).GetString(),
+                MappingRule = row.Cell(14).GetString(),
+                Notes = row.Cell(15).GetString(),
+                MappingStatus = row.Cell(16).GetString(),
             };
 
             config.ColumnMappings.Add(mapping);
@@ -100,6 +100,14 @@ public class ExcelMappingService
         config.GroupedByTable = config.ColumnMappings
             .GroupBy(m => m.NewTableName)
             .ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private int? ParseInsertOrder(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return int.TryParse(value, out var order) ? order : null;
     }
 
     private bool? ParseNullable(string value)
@@ -136,14 +144,15 @@ public class ExcelMappingService
         sheet.Cell(1, 5).Value = "Has lookup";
         sheet.Cell(1, 6).Value = "New Lookup Table";
         sheet.Cell(1, 7).Value = "New Column Description";
-        sheet.Cell(1, 8).Value = "Old System Table Name";
-        sheet.Cell(1, 9).Value = "Old Column";
-        sheet.Cell(1, 10).Value = "Old DataType";
-        sheet.Cell(1, 11).Value = "Old Column Nullable";
-        sheet.Cell(1, 12).Value = "Old Lookup Table";
-        sheet.Cell(1, 13).Value = "Mapping Rule";
-        sheet.Cell(1, 14).Value = "Notes";
-        sheet.Cell(1, 15).Value = "Mapping Status";
+        sheet.Cell(1, 8).Value = "Insert Order";
+        sheet.Cell(1, 9).Value = "Old System Table Name";
+        sheet.Cell(1, 10).Value = "Old Column";
+        sheet.Cell(1, 11).Value = "Old DataType";
+        sheet.Cell(1, 12).Value = "Old Column Nullable";
+        sheet.Cell(1, 13).Value = "Old Lookup Table";
+        sheet.Cell(1, 14).Value = "Mapping Rule";
+        sheet.Cell(1, 15).Value = "Notes";
+        sheet.Cell(1, 16).Value = "Mapping Status";
 
         // Sample data row 1: Direct mapping
         int row = 2;
@@ -154,14 +163,15 @@ public class ExcelMappingService
         sheet.Cell(row, 5).Value = "NO";
         sheet.Cell(row, 6).Value = "";
         sheet.Cell(row, 7).Value = "Primary key";
-        sheet.Cell(row, 8).Value = "OldSystem.Person";
-        sheet.Cell(row, 9).Value = "PersonId";
-        sheet.Cell(row, 10).Value = "INT";
-        sheet.Cell(row, 11).Value = "NO";
-        sheet.Cell(row, 12).Value = "";
+        sheet.Cell(row, 8).Value = 1;
+        sheet.Cell(row, 9).Value = "OldSystem.Person";
+        sheet.Cell(row, 10).Value = "PersonId";
+        sheet.Cell(row, 11).Value = "INT";
+        sheet.Cell(row, 12).Value = "NO";
         sheet.Cell(row, 13).Value = "";
-        sheet.Cell(row, 14).Value = "Direct mapping";
-        sheet.Cell(row, 15).Value = "Approved";
+        sheet.Cell(row, 14).Value = "";
+        sheet.Cell(row, 15).Value = "Direct mapping";
+        sheet.Cell(row, 16).Value = "Approved";
 
         // Sample data row 2: Lookup mapping with specification
         row = 3;
@@ -170,26 +180,27 @@ public class ExcelMappingService
         sheet.Cell(row, 3).Value = "NVARCHAR(50)";
         sheet.Cell(row, 4).Value = "NO";
         sheet.Cell(row, 5).Value = "YES";
-        sheet.Cell(row, 6).Value = "[LookupValues].[LookupTypeId] = 1600";
+        sheet.Cell(row, 6).Value = "[Name].[LookupValues].[LookupTypeId] = 1600";
         sheet.Cell(row, 7).Value = "Employee type from lookup";
-        sheet.Cell(row, 8).Value = "OldSystem.Employee";
-        sheet.Cell(row, 9).Value = "EmpType";
-        sheet.Cell(row, 10).Value = "VARCHAR(50)";
-        sheet.Cell(row, 11).Value = "YES";
-        sheet.Cell(row, 12).Value = "[OldLookupValues].[LookupTypeId] = 1500";
-        sheet.Cell(row, 13).Value = "";
-        sheet.Cell(row, 14).Value = "Lookup values filtered by type ID";
-        sheet.Cell(row, 15).Value = "Approved";
+        sheet.Cell(row, 8).Value = 2;
+        sheet.Cell(row, 9).Value = "OldSystem.Employee";
+        sheet.Cell(row, 10).Value = "EmpType";
+        sheet.Cell(row, 11).Value = "VARCHAR(50)";
+        sheet.Cell(row, 12).Value = "YES";
+        sheet.Cell(row, 13).Value = "[Name].[OldLookupValues].[LookupTypeId] = 1500";
+        sheet.Cell(row, 14).Value = "";
+        sheet.Cell(row, 15).Value = "Lookup values filtered by type ID";
+        sheet.Cell(row, 16).Value = "Approved";
 
         // Format
-        var headerRange = sheet.Range(1, 1, 1, 15);
+        var headerRange = sheet.Range(1, 1, 1, 16);
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
-        
+
         // Add notes to lookup columns (using cell notes instead of comments)
-        sheet.Cell(2, 6).Value = "Example: [LookupValues].[LookupTypeId] = 1600";
-        sheet.Cell(2, 12).Value = "Example: [OldLookupValues].[LookupTypeId] = 1500";
-        
+        sheet.Cell(2, 6).Value = "Example: [Name].[LookupValues].[LookupTypeId] = 1600";
+        sheet.Cell(2, 13).Value = "Example: [Name].[OldLookupValues].[LookupTypeId] = 1500";
+
         sheet.Columns().AdjustToContents();
         sheet.SheetView.FreezeRows(1);
 
@@ -350,18 +361,19 @@ public class ExcelMappingService
         sheet.Cell(1, 5).Value = "Has lookup";
         sheet.Cell(1, 6).Value = "New Lookup Table";
         sheet.Cell(1, 7).Value = "New Column Description";
-        sheet.Cell(1, 8).Value = "Old System Table Name";
-        sheet.Cell(1, 9).Value = "Old Column";
-        sheet.Cell(1, 10).Value = "Old DataType";
-        sheet.Cell(1, 11).Value = "Old Column Nullable";
-        sheet.Cell(1, 12).Value = "Old Lookup Table";
-        sheet.Cell(1, 13).Value = "Mapping Rule";
-        sheet.Cell(1, 14).Value = "Notes";
-        sheet.Cell(1, 15).Value = "Mapping Status";
-        sheet.Cell(1, 16).Value = "AnalysisResult";  // New column
+        sheet.Cell(1, 8).Value = "Insert Order";
+        sheet.Cell(1, 9).Value = "Old System Table Name";
+        sheet.Cell(1, 10).Value = "Old Column";
+        sheet.Cell(1, 11).Value = "Old DataType";
+        sheet.Cell(1, 12).Value = "Old Column Nullable";
+        sheet.Cell(1, 13).Value = "Old Lookup Table";
+        sheet.Cell(1, 14).Value = "Mapping Rule";
+        sheet.Cell(1, 15).Value = "Notes";
+        sheet.Cell(1, 16).Value = "Mapping Status";
+        sheet.Cell(1, 17).Value = "AnalysisResult";  // New column
 
         // Format header
-        var headerRange = sheet.Range(1, 1, 1, 16);
+        var headerRange = sheet.Range(1, 1, 1, 17);
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
 
@@ -384,7 +396,7 @@ public class ExcelMappingService
                 if (mapping.NewTableName != prevTable)
                 {
                     // Add gray separator
-                    AddGraySeparator(sheet, row, 16);
+                    AddGraySeparator(sheet, row, 17);
                     row++;
                 }
                 sheet.Cell(row, 1).Value = mapping.NewTableName ?? "";
@@ -396,33 +408,34 @@ public class ExcelMappingService
                 sheet.Cell(row, 5).Value = mapping.HasLookup ? "YES" : "NO";
                 sheet.Cell(row, 6).Value = mapping.NewLookupTable ?? "";
                 sheet.Cell(row, 7).Value = mapping.NewColumnDescription ?? "";
-                sheet.Cell(row, 8).Value = mapping.OldTableName ?? "";
-                sheet.Cell(row, 9).Value = mapping.OldColumn ?? "";
-                sheet.Cell(row, 10).Value = mapping.OldDataType ?? "";
-                sheet.Cell(row, 11).Value = mapping.OldColumnNullable.HasValue
+                sheet.Cell(row, 8).Value = mapping.InsertOrder.HasValue ? mapping.InsertOrder.Value : "";
+                sheet.Cell(row, 9).Value = mapping.OldTableName ?? "";
+                sheet.Cell(row, 10).Value = mapping.OldColumn ?? "";
+                sheet.Cell(row, 11).Value = mapping.OldDataType ?? "";
+                sheet.Cell(row, 12).Value = mapping.OldColumnNullable.HasValue
                     ? (mapping.OldColumnNullable.Value ? "YES" : "NO")
                     : "";
-                sheet.Cell(row, 12).Value = mapping.OldLookupTable ?? "";
-                sheet.Cell(row, 13).Value = mapping.MappingRule ?? "";
-                sheet.Cell(row, 14).Value = mapping.Notes ?? "";
-                sheet.Cell(row, 15).Value = mapping.MappingStatus ?? "";
+                sheet.Cell(row, 13).Value = mapping.OldLookupTable ?? "";
+                sheet.Cell(row, 14).Value = mapping.MappingRule ?? "";
+                sheet.Cell(row, 15).Value = mapping.Notes ?? "";
+                sheet.Cell(row, 16).Value = mapping.MappingStatus ?? "";
 
                 // Generate analysis result
                 var analysisText = GenerateAnalysisResult(mapping, analysisResult, datatypeComparisons);
-                sheet.Cell(row, 16).Value = analysisText ?? "✓ OK";
+                sheet.Cell(row, 17).Value = analysisText ?? "✓ OK";
 
                 // Color code the analysis result
                 if (analysisText.Contains("✓ OK") || analysisText.Contains("✓ Lookup") || analysisText.Contains("✓ Type"))
                 {
-                    sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                    sheet.Cell(row, 17).Style.Fill.BackgroundColor = XLColor.LightGreen;
                 }
                 else if (analysisText.Contains("⚠"))
                 {
-                    sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.Yellow;
+                    sheet.Cell(row, 17).Style.Fill.BackgroundColor = XLColor.Yellow;
                 }
                 else if (analysisText.Contains("✗"))
                 {
-                    sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightPink;
+                    sheet.Cell(row, 17).Style.Fill.BackgroundColor = XLColor.LightPink;
                 }
 
                 // Add hyperlink to lookup analysis sheet if it exists
@@ -432,7 +445,7 @@ public class ExcelMappingService
                     if (lookupSheetNames.ContainsKey(key))
                     {
                         var lookupSheetName = lookupSheetNames[key];
-                        var cell = sheet.Cell(row, 16);
+                        var cell = sheet.Cell(row, 17);
 
                         // Add hyperlink to the cell
                         try
@@ -508,7 +521,7 @@ public class ExcelMappingService
         }
 
         // Check if has mapping rule (custom logic)
-        if (!string.IsNullOrWhiteSpace(mapping.MappingRule))
+        if (!string.IsNullOrWhiteSpace(mapping.MappingRule) && !mapping.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
         {
             results.Add("✓ OK (custom mapping rule)");
             return string.Join(" | ", results);

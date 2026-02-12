@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text;
 using ZaDataStudio.Application.Mapping.Rules;
 using ZaDataStudio.Domain.Entities;
@@ -20,6 +21,7 @@ public class MappingRuleEngine
             new ColumnToRowMappingRule(),
             //new LookupMappingRule(),
             new NullMappingRule(),
+            new SubstringMappingRule(),
             new ExpressionMappingRule(),
             new ConcatenationMappingRule(),
             new ConditionalMappingRule(),
@@ -59,8 +61,12 @@ public class MappingRuleEngine
     {
         try 
         {
-            var mappingResult = ProcessMapping(mapping, new MappingContext());
-            return mappingResult.FullSqlExpression;
+            if (mapping.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                var mappingResult = ProcessMapping(mapping, new MappingContext());
+                return mappingResult.FullSqlExpression;
+            }
+            return "";
         }
         catch (Exception ex)
         {
@@ -100,18 +106,46 @@ public class MappingRuleEngine
             sql.AppendLine();
         }
 
-        // Process each table
-        foreach (var tableGroup in config.GroupedByTable.OrderBy(t => t.Key))
+        // Order tables by minimum InsertOrder of their columns
+        // This ensures tables with dependencies are created in the correct order
+        var orderedTableGroups = config.GroupedByTable
+            .Select(tg => new
+            {
+                TableName = tg.Key,
+                Mappings = tg.Value,
+                MinInsertOrder = tg.Value
+                    .Where(m => m.InsertOrder.HasValue)
+                    .Select(m => m.InsertOrder!.Value)
+                    .DefaultIfEmpty(int.MaxValue)
+                    .Min()
+            })
+            .OrderBy(tg => tg.MinInsertOrder)
+            .ThenBy(tg => tg.TableName)
+            .ToList();
+
+        // Add comment about table ordering
+        if (orderedTableGroups.Any(tg => tg.MinInsertOrder != int.MaxValue))
+        {
+            sql.AppendLine("-- Tables are ordered by their minimum Insert Order:");
+            foreach (var tg in orderedTableGroups.Where(t => t.MinInsertOrder != int.MaxValue))
+            {
+                sql.AppendLine($"--   {tg.TableName} (Order: {tg.MinInsertOrder})");
+            }
+            sql.AppendLine();
+        }
+
+        // Process each table in order
+        foreach (var tableGroup in orderedTableGroups)
         {
             var context = new MappingContext
             {
-                DestinationTable = tableGroup.Key,
-                AllMappings = tableGroup.Value
+                DestinationTable = tableGroup.TableName,
+                AllMappings = tableGroup.Mappings
             };
 
             var tableResult = GenerateTableMigrationSQL(
-                tableGroup.Key, 
-                tableGroup.Value, 
+                tableGroup.TableName, 
+                tableGroup.Mappings, 
                 context, 
                 analysisResult,
                 sourceDatabase,
@@ -148,7 +182,10 @@ public class MappingRuleEngine
         // Filter approved mappings
         var approvedMappings = mappings
             .Where(m => string.IsNullOrWhiteSpace(m.MappingStatus) || 
-                       m.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                       m.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase) ||
+                       m.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
+            //.OrderBy(m => m.InsertOrder ?? int.MaxValue) // Order by InsertOrder, nulls last
+            //.ThenBy(m => m.NewColumn) // Secondary sort by column name
             .ToList();
 
         if (!approvedMappings.Any())
@@ -173,6 +210,8 @@ public class MappingRuleEngine
         sql.AppendLine($"-- Table: {tableName}");
         sql.AppendLine($"-- Source Tables: {(sourceTables.Any() ? string.Join(", ", sourceTables) : "None (static values)")}");
         sql.AppendLine($"-- Columns: {approvedMappings.Count}");
+        if (approvedMappings.Any(m => m.InsertOrder.HasValue))
+            sql.AppendLine($"-- Ordered by: Insert Order");
         sql.AppendLine($"-- ============================================");
         sql.AppendLine();
 
@@ -198,7 +237,7 @@ public class MappingRuleEngine
                 la.ValuesMapping != null && 
                 la.ValuesMapping.Any());
 
-            if (lookupAnalysis != null)
+            if (lookupAnalysis != null && mapping.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase))
             {
                 // Generate CASE WHEN statement from ValuesMapping
                 sqlExpression = GenerateLookupCaseWhen(mapping, lookupAnalysis, sourceDatabase);
@@ -237,7 +276,7 @@ public class MappingRuleEngine
             {
                 var joinTable = sourceTables[i];
                 sql.AppendLine($"    -- TODO: Define JOIN condition for {joinTable}");
-                sql.AppendLine($"    LEFT JOIN {FormatTableName(joinTable, sourceDatabase)} AS {GetTableAlias(joinTable)}");
+                sql.AppendLine($"    INNER JOIN {FormatTableName(joinTable, sourceDatabase)} AS {GetTableAlias(joinTable)}");
                 sql.AppendLine($"        ON {GetTableAlias(primaryTable)}.KeyColumn = {GetTableAlias(joinTable)}.KeyColumn");
             }
         }

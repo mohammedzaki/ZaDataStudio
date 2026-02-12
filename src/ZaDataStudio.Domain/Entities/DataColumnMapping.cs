@@ -9,6 +9,7 @@ public class DataColumnMapping
     public bool HasLookup { get; set; }
     public string NewLookupTable { get; set; } = string.Empty;
     public string NewColumnDescription { get; set; } = string.Empty;
+    public int? InsertOrder { get; set; }
     public string OldTableName { get; set; } = string.Empty;
     public string OldColumn { get; set; } = string.Empty;
     public string OldDataType { get; set; } = string.Empty;
