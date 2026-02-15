@@ -801,10 +801,10 @@ public class ExcelMappingService
                 row++;
 
                 // Table headers
-                sheet.Cell(row, 1).Value = "Source Code";
-                sheet.Cell(row, 2).Value = "Source Value";
-                sheet.Cell(row, 3).Value = "Destination Code";
-                sheet.Cell(row, 4).Value = "Destination Value";
+                sheet.Cell(row, 1).Value = "Old Code";
+                sheet.Cell(row, 2).Value = "Old Value";
+                sheet.Cell(row, 3).Value = "New Code";
+                sheet.Cell(row, 4).Value = "New Value";
                 sheet.Cell(row, 5).Value = "Status";
                 sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
                 sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightGray;

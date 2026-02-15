@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text;
+using System.Text.RegularExpressions;
 using ZaDataStudio.Application.Mapping.Rules;
 using ZaDataStudio.Domain.Entities;
 
@@ -184,7 +185,7 @@ public class MappingRuleEngine
             .Where(m => string.IsNullOrWhiteSpace(m.MappingStatus) || 
                        m.MappingStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase) ||
                        m.MappingStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
-            //.OrderBy(m => m.InsertOrder ?? int.MaxValue) // Order by InsertOrder, nulls last
+            .OrderBy(m => m.InsertOrder ?? int.MaxValue) // Order by InsertOrder, nulls last
             //.ThenBy(m => m.NewColumn) // Secondary sort by column name
             .ToList();
 
@@ -275,9 +276,28 @@ public class MappingRuleEngine
             for (int i = 1; i < sourceTables.Count; i++)
             {
                 var joinTable = sourceTables[i];
-                sql.AppendLine($"    -- TODO: Define JOIN condition for {joinTable}");
+
+                // Try to find join condition from Notes column
+                var joinCondition = approvedMappings
+                    .Where(m => m.OldTableName == joinTable && !string.IsNullOrWhiteSpace(m.Notes) && IsValidJoinCondition(m.Notes))
+                    .Select(m => m.Notes)
+                    .FirstOrDefault();
+
                 sql.AppendLine($"    INNER JOIN {FormatTableName(joinTable, sourceDatabase)} AS {GetTableAlias(joinTable)}");
-                sql.AppendLine($"        ON {GetTableAlias(primaryTable)}.KeyColumn = {GetTableAlias(joinTable)}.KeyColumn");
+
+                // Validate and use join condition if it matches the expected pattern
+                if (!string.IsNullOrWhiteSpace(joinCondition) && IsValidJoinCondition(joinCondition))
+                {
+                    joinCondition = ReplaceTableReferences(joinCondition, primaryTable);
+                    joinCondition = ReplaceTableReferences(joinCondition, joinTable);
+                    // Use the join condition from Notes column
+                    sql.AppendLine($"        ON {joinCondition}");
+                }
+                else
+                {
+                    // Fallback to placeholder if no join condition is specified or pattern is invalid
+                    sql.AppendLine($"        ON {GetTableAlias(primaryTable)}.KeyColumn = {GetTableAlias(joinTable)}.KeyColumn -- TODO: Define JOIN condition");
+                }
             }
         }
 
@@ -320,6 +340,40 @@ public class MappingRuleEngine
         }
 
         return sql.ToString();
+    }
+
+    /// <summary>
+    /// Validate if the join condition follows the expected pattern: table.[column] = table.[column]
+    /// Supports variations with or without brackets around table names
+    /// Finds and validates the first pattern match in the string
+    /// </summary>
+    private bool IsValidJoinCondition(string joinCondition)
+    {
+        if (string.IsNullOrWhiteSpace(joinCondition))
+            return false;
+
+        // Pattern to match: [tableName].[columnName] = [tableName].[columnName]
+        // Or: tableName.[columnName] = tableName.[columnName]
+        // Supports optional brackets around table names and column names
+        // Removed ^ and $ to find pattern anywhere in the string
+        var pattern = @"(\[?\w+\]?)\.(\[?\w+\]?)\s*=\s*(\[?\w+\]?)\.(\[?\w+\]?)";
+
+        var match = Regex.Match(joinCondition, pattern, RegexOptions.IgnoreCase);
+        return match.Success;
+    }
+
+    private string ReplaceTableReferences(string joinCondition, string tableName)
+    {
+        var alias = GetTableAlias(tableName);
+
+        // Replace only the first occurrence of the table name
+        int index = joinCondition.IndexOf(tableName, StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+        {
+            return joinCondition.Remove(index, tableName.Length).Insert(index, alias);
+        }
+
+        return joinCondition;
     }
 
     /// <summary>

@@ -253,6 +253,7 @@ public partial class SchemaComparison : ComponentBase
                 loadedItems.Add("destination connection verified");
 
             loadMessage = $"Session '{session.DisplayName}' loaded successfully! Restored: {string.Join(", ", loadedItems)}.";
+            sessionName = session.Name;
 
             showLoadDialog = false;
 
@@ -1140,7 +1141,10 @@ public partial class SchemaComparison : ComponentBase
                 excelComparisonResult,
                 excelComparisonResult.DatatypeComparisons));
 
-            var fileName = $"MappingAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            var sessionPrefix = !string.IsNullOrWhiteSpace(sessionName) 
+                ? $"{SanitizeFileName(sessionName)}_" 
+                : "";
+            var fileName = $"{sessionPrefix}MappingAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
             var base64 = Convert.ToBase64String(excelBytes);
 
             await JSRuntime.InvokeVoidAsync("eval", $@"
@@ -1159,6 +1163,12 @@ public partial class SchemaComparison : ComponentBase
             isExportingAnalysisExcel = false;
             StateHasChanged(); // Force UI update to hide spinner
         }
+    }
+
+    private string SanitizeFileName(string fileName)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Join("_", fileName.Split(invalid, StringSplitOptions.RemoveEmptyEntries)).TrimEnd('.');
     }
 
     // Manual Mapping SQL Generation Methods
