@@ -505,24 +505,27 @@
                                                         <thead class="table-light sticky-top">
                                                             <tr>
                                                                 <th>Source Lookup Code</th>
-                                                                <th>Source Lookup Value</th>
+                                                                <th>Source Lookup En Value</th>
+                                                                <th>Source Lookup Ar Value</th>
                                                                 <th class="text-center">
                                                                     <span class="bi bi-arrow-right"></span>
                                                                 </th>
                                                                 <th>Destination Lookup Code</th>
-                                                                <th>Destination Lookup Value</th>
+                                                                <th>Destination Lookup En Value</th>
+                                                                <th>Destination Lookup Ar Value</th>
                                                                 <th class="text-center">Status</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             @foreach (var mapping in lookup.ValuesMapping)
                                                             {
-                                                                var isMatched = !string.IsNullOrEmpty(mapping.DestinationLookupValue);
+                                                                var isMatched = !string.IsNullOrEmpty(mapping.DestinationLookupEnValue);
                                                                 <tr class="@(isMatched ? "" : "table-warning")">
                                                                     <td>
                                                                         <code class="small">@mapping.SourceLookupCode</code>
                                                                     </td>
-                                                                    <td>@mapping.SourceLookupValue</td>
+                                                                    <td>@mapping.SourceLookupEnValue</td>
+                                                                    <td>@mapping.SourceLookupArValue</td>
                                                                     <td class="text-center">
                                                                         @if (isMatched)
                                                                         {
@@ -546,7 +549,17 @@
                                                                     <td>
                                                                         @if (isMatched)
                                                                         {
-                                                                            @mapping.DestinationLookupValue
+                                                                            @mapping.DestinationLookupEnValue
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="text-muted fst-italic">No match</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>
+                                                                        @if (isMatched)
+                                                                        {
+                                                                            @mapping.DestinationLookupArValue
                                                                         }
                                                                         else
                                                                         {
@@ -574,18 +587,18 @@
                                                         </tbody>
                                                         <tfoot class="table-light sticky-bottom">
                                                             <tr>
-                                                                <td colspan="5" class="text-end">
+                                                                <td colspan="7" class="text-end">
                                                                     <strong>Summary:</strong>
                                                                     <span class="badge bg-success ms-2">
-                                                                        @lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupValue)) Matched
+                                                                        @lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupEnValue)) Matched
                                                                     </span>
                                                                     <span class="badge bg-warning text-dark ms-1">
-                                                                        @lookup.ValuesMapping.Count(m => string.IsNullOrEmpty(m.DestinationLookupValue)) Missing
+                                                                        @lookup.ValuesMapping.Count(m => string.IsNullOrEmpty(m.DestinationLookupEnValue)) Missing
                                                                     </span>
                                                                 </td>
                                                                 <td class="text-center">
                                                                     @{
-                                                                        var matchedCount = lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupValue));
+                                                                        var matchedCount = lookup.ValuesMapping.Count(m => !string.IsNullOrEmpty(m.DestinationLookupEnValue));
                                                                         var totalCount = lookup.ValuesMapping.Count;
                                                                         var percentage = totalCount > 0 ? (matchedCount * 100.0 / totalCount) : 0;
                                                                     }

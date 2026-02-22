@@ -628,7 +628,7 @@ public class ExcelMappingService
                 sheet.Cell(row, 1).Value = "QUERIES";
                 sheet.Cell(row, 1).Style.Font.Bold = true;
                 sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGray;
-                sheet.Range(row, 1, row, 3).Merge();
+                sheet.Range(row, 1, row, 5).Merge();
                 row++;
 
                 if (!string.IsNullOrEmpty(lookup.SourceLookupQuery))
@@ -643,7 +643,7 @@ public class ExcelMappingService
                     sourceQueryCell.Style.Font.FontSize = 9;
                     sourceQueryCell.Style.Fill.BackgroundColor = XLColor.LightGray;
                     sourceQueryCell.Style.Alignment.WrapText = true;
-                    sheet.Range(row, 1, row, 3).Merge();
+                    sheet.Range(row, 1, row, 5).Merge();
                     row++;
                     row++; // Blank row
                 }
@@ -660,7 +660,7 @@ public class ExcelMappingService
                     destQueryCell.Style.Font.FontSize = 9;
                     destQueryCell.Style.Fill.BackgroundColor = XLColor.LightGray;
                     destQueryCell.Style.Alignment.WrapText = true;
-                    sheet.Range(row, 1, row, 3).Merge();
+                    sheet.Range(row, 1, row, 5).Merge();
                     row++;
                     row++; // Blank row
                 }
@@ -677,7 +677,7 @@ public class ExcelMappingService
                     mismatchQueryCell.Style.Font.FontSize = 9;
                     mismatchQueryCell.Style.Fill.BackgroundColor = XLColor.LightYellow;
                     mismatchQueryCell.Style.Alignment.WrapText = true;
-                    sheet.Range(row, 1, row, 3).Merge();
+                    sheet.Range(row, 1, row, 5).Merge();
                     row++;
                     row++; // Blank row
                 }
@@ -689,14 +689,16 @@ public class ExcelMappingService
             sheet.Cell(row, 1).Value = "DESTINATION LOOKUP VALUES";
             sheet.Cell(row, 1).Style.Font.Bold = true;
             sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
-            sheet.Range(row, 1, row, 3).Merge();
+            sheet.Range(row, 1, row, 5).Merge();
             row++;
 
-            sheet.Cell(row, 1).Value = "Value";
-            sheet.Cell(row, 2).Value = "Status";
-            sheet.Cell(row, 3).Value = "Notes";
-            sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
-            sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+            sheet.Cell(row, 1).Value = "Code";
+            sheet.Cell(row, 2).Value = "En Value";
+            sheet.Cell(row, 3).Value = "Ar Value";
+            sheet.Cell(row, 4).Value = "Status";
+            sheet.Cell(row, 5).Value = "Notes";
+            sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
+            sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightGray;
             row++;
 
             if (lookup.DestinationSampleValues != null && lookup.DestinationSampleValues.Any())
@@ -709,9 +711,11 @@ public class ExcelMappingService
                         break;
                     }
 
-                    sheet.Cell(row, 1).Value = value.Value ?? "";
-                    sheet.Cell(row, 2).Value = "✓ In Destination";
-                    sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                    sheet.Cell(row, 1).Value = value.Key ?? "";
+                    sheet.Cell(row, 2).Value = value.Value?.EnValue ?? "";
+                    sheet.Cell(row, 3).Value = value.Value?.ArValue ?? "";
+                    sheet.Cell(row, 4).Value = "✓ In Destination";
+                    sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.LightGreen;
                     row++;
                 }
 
@@ -735,19 +739,21 @@ public class ExcelMappingService
             sheet.Cell(row, 1).Value = "SOURCE LOOKUP VALUES";
             sheet.Cell(row, 1).Style.Font.Bold = true;
             sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
-            sheet.Range(row, 1, row, 3).Merge();
+            sheet.Range(row, 1, row, 5).Merge();
             row++;
 
-            sheet.Cell(row, 1).Value = "Value";
-            sheet.Cell(row, 2).Value = "Status";
-            sheet.Cell(row, 3).Value = "Notes";
-            sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
-            sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+            sheet.Cell(row, 1).Value = "Code";
+            sheet.Cell(row, 2).Value = "En Value";
+            sheet.Cell(row, 3).Value = "Ar Value";
+            sheet.Cell(row, 4).Value = "Status";
+            sheet.Cell(row, 5).Value = "Notes";
+            sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
+            sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightGray;
             row++;
 
             if (lookup.SourceSampleValues != null && lookup.SourceSampleValues.Any())
             {
-                var destValuesSet = (lookup.DestinationSampleValues?.Values.ToList() ?? new List<string>())
+                var destValuesSet = (lookup.DestinationSampleValues?.Values.Select(v => v.EnValue).ToList() ?? new List<string>())
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var value in lookup.SourceSampleValues)
@@ -758,18 +764,20 @@ public class ExcelMappingService
                         break;
                     }
 
-                    sheet.Cell(row, 1).Value = value.Value ?? "";
+                    sheet.Cell(row, 1).Value = value.Key ?? "";
+                    sheet.Cell(row, 2).Value = value.Value?.EnValue ?? "";
+                    sheet.Cell(row, 3).Value = value.Value?.ArValue ?? "";
 
-                    if (destValuesSet.Contains(value.Value))
+                    if (destValuesSet.HasSimilarValue(value.Value))
                     {
-                        sheet.Cell(row, 2).Value = "✓ Match Found";
-                        sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                        sheet.Cell(row, 4).Value = "✓ Match Found";
+                        sheet.Cell(row, 4).Style.Fill.BackgroundColor = XLColor.LightGreen;
                     }
                     else
                     {
-                        sheet.Cell(row, 2).Value = "✗ NOT in Destination";
-                        sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightPink;
-                        sheet.Cell(row, 3).Value = "⚠ Needs mapping or insert";
+                        sheet.Cell(row, 4).Value = "✗ NOT in Destination";
+                        sheet.Cell(row, 4).Style.Fill.BackgroundColor = XLColor.LightPink;
+                        sheet.Cell(row, 5).Value = "⚠ Needs mapping or insert";
                     }
 
                     row++;
@@ -822,12 +830,12 @@ public class ExcelMappingService
                         break;
                     }
 
-                    var isMatched = !string.IsNullOrEmpty(valueMap.DestinationLookupValue);
+                    var isMatched = !string.IsNullOrEmpty(valueMap.DestinationLookupEnValue);
 
                     sheet.Cell(row, 1).Value = valueMap.SourceLookupCode ?? "";
-                    sheet.Cell(row, 2).Value = valueMap.SourceLookupValue ?? "";
+                    sheet.Cell(row, 2).Value = valueMap.SourceLookupEnValue ?? "";
                     sheet.Cell(row, 3).Value = isMatched ? (valueMap.DestinationLookupCode ?? "") : "-";
-                    sheet.Cell(row, 4).Value = isMatched ? (valueMap.DestinationLookupValue ?? "") : "No match";
+                    sheet.Cell(row, 4).Value = isMatched ? (valueMap.DestinationLookupEnValue ?? "") : "No match";
                     sheet.Cell(row, 5).Value = isMatched ? "✓ Matched" : "✗ Missing";
 
                     // Color code the row

@@ -393,7 +393,7 @@ public class MappingRuleEngine
 
         // Generate WHEN clauses for matched values
         var matchedMappings = lookupAnalysis.ValuesMapping
-            .Where(vm => !string.IsNullOrEmpty(vm.DestinationLookupValue))
+            .Where(vm => !string.IsNullOrEmpty(vm.DestinationLookupEnValue))
             .ToList();
 
         foreach (var valueMap in matchedMappings)

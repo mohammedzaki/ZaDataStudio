@@ -45,7 +45,10 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         using var srcReader = await _databaseService.ExecuteReaderAsync(sourceConnectionString, sqlExpression);
         while (await srcReader.ReadAsync())
         {
-            analysis.SourceSampleValues.Add(srcReader[0]?.ToString() ?? "", srcReader[1]?.ToString() ?? "");
+            var code = srcReader[0]?.ToString() ?? "";
+            var enValue = srcReader[1]?.ToString() ?? "";
+            var arValue = srcReader[2]?.ToString() ?? "";
+            analysis.SourceSampleValues.Add(code, new LookupValue(code, enValue, arValue));
         }
         await srcReader.DisposeAsync();
 
@@ -64,7 +67,10 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         using var destReader = await _databaseService.ExecuteReaderAsync(destinationConnectionString, destSqlExpression);
         while (await destReader.ReadAsync())
         {
-            analysis.DestinationSampleValues.Add(destReader[0]?.ToString() ?? "", destReader[1]?.ToString() ?? "");
+            var code = destReader[0]?.ToString() ?? "";
+            var enValue = destReader[1]?.ToString() ?? "";
+            var arValue = destReader[2]?.ToString() ?? "";
+            analysis.DestinationSampleValues.Add(code, new LookupValue(code, enValue, arValue));
         }
         await destReader.DisposeAsync();
 
@@ -74,8 +80,8 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         analysis.DestinationDistinctCount = destCountResult != null ? Convert.ToInt32(destCountResult) : 0;
 
         // Find mismatched values (in source but not in destination)
-        var destValuesSet = analysis.DestinationSampleValues.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        analysis.MismatchedValues = analysis.SourceSampleValues.Values
+        var destValuesSet = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        analysis.MismatchedValues = analysis.SourceSampleValues.Values.Select(v => v.EnValue)
             .Where(v => !destValuesSet.Contains(v))
             .ToList();
 
@@ -132,8 +138,8 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
 
             // Compare values
-            var destValuesSet = analysis.DestinationSampleValues.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            analysis.MismatchedValues = analysis.SourceSampleValues.Values
+            var destValuesSet = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            analysis.MismatchedValues = analysis.SourceSampleValues.Values.Select(v => v.EnValue)
                 .Where(v => !destValuesSet.Contains(v))
                 .ToList();
 
@@ -170,10 +176,10 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 if (sourceTableName == oldLookupSpec.TableName)
                     joinStr = "";
                 countQuery = $@"
-                    SELECT [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}], COUNT(*) as RecordCount
+                    SELECT [{sourceColumnName}], [{oldLookupSpec.EnValueColumnName}], COUNT(*) as RecordCount
                     FROM {sourceTableName}
                     {joinStr}
-                    GROUP BY [{sourceColumnName}], [{oldLookupSpec.ValueColumnName}]
+                    GROUP BY [{sourceColumnName}], [{oldLookupSpec.EnValueColumnName}]
                     ORDER BY RecordCount DESC";
             }
             else
@@ -205,7 +211,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             if (valueCounts.ContainsKey("NULL"))
             {
                 analysis.MismatchedValues.Add("NULL");
-                analysis.SourceSampleValues.Add("NULL", "NULL");
+                analysis.SourceSampleValues.Add("NULL", new LookupValue("NULL", "NULL", "NULL"));
             }
 
             Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
@@ -231,7 +237,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         string connectionString,
         DataColumnMapping columnMapping,
         LookupTableSpec? spec,
-        Dictionary<string, string> targetList,
+        Dictionary<string, LookupValue> targetList,
         bool isSource)
     {
         async Task<bool> ExecuteQuery(string sqlQuery)
@@ -239,7 +245,12 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             using var reader = await _databaseService.ExecuteReaderAsync(connectionString, sqlQuery);
             while (await reader.ReadAsync())
             {
-                targetList.Add(reader[0]?.ToString() ?? "", reader[1]?.ToString() ?? "");
+                var code = reader[0]?.ToString() ?? "";
+                var enValue = reader[1]?.ToString() ?? "";
+                var arValue = "";
+                if (reader.FieldCount >= 3)
+                    arValue = reader[2]?.ToString() ?? "";
+                targetList.Add(code, new LookupValue(code, enValue, arValue));
             }
             await reader.DisposeAsync();
             return true;
@@ -250,27 +261,29 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             var sqlExpression = _ruleEngine.GenerateMappingRuleSQL(columnMapping);
             if (string.IsNullOrWhiteSpace(sqlExpression))
                 sqlExpression = $@"
-                    SELECT DISTINCT [{columnMapping.OldColumn}] AS LookupCode, [{columnMapping.OldColumn}] AS LookupValue
+                    SELECT DISTINCT [{columnMapping.OldColumn}] AS LookupCode, [{columnMapping.OldColumn}] AS LookupEnValue
                     FROM {FormatTableName(columnMapping.OldTableName)}
                     ORDER BY [{columnMapping.OldColumn}]";
 
             return (await ExecuteQuery(sqlExpression), sqlExpression);
         }
-        else
+        else 
         {
             var tableName = FormatTableName(spec.TableName);
             // Query to get values filtered by the specification
             var sqlExpression = $@"
-            SELECT DISTINCT TOP 50 [{spec.JoinColumnName}], [{spec.ValueColumnName}]
+            SELECT DISTINCT TOP 50 [{spec.JoinColumnName}] AS LookupCode, 
+            [{spec.EnValueColumnName}] AS LookupEnValue
+            {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",[{spec.ArValueColumnName}] AS LookupArValue")}
             FROM {tableName}
-            WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}
-            ORDER BY [{spec.ValueColumnName}]";
+            { (!string.IsNullOrEmpty(spec.ColumnName) ? $"WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}" : "") }
+            ORDER BY [{spec.JoinColumnName}]";
             var lookupQuery = LookupSpecificationParser.GenerateLookupQuery(spec);
             return (await ExecuteQuery(sqlExpression), lookupQuery);
         }
     }
 
-    /// <summary>
+    /// <summary> 
     /// Build values mapping showing matched and unmatched values
     /// </summary>
     private void BuildValuesMapping(LookupColumnAnalysis analysis)
@@ -278,12 +291,12 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         analysis.ValuesMapping.Clear();
 
         // Create a dictionary for quick destination lookup by value (case-insensitive)
-        var destByValue = new Dictionary<string, (string code, string value)>(StringComparer.OrdinalIgnoreCase);
+        var destByValue = new Dictionary<string, LookupValue>(StringComparer.OrdinalIgnoreCase);
         foreach (var dest in analysis.DestinationSampleValues)
         {
-            if (!destByValue.ContainsKey(dest.Value))
+            if (!destByValue.ContainsKey(dest.Value.EnValue))
             {
-                destByValue[dest.Value] = (dest.Key, dest.Value);
+                destByValue[dest.Value.EnValue] = new LookupValue(dest.Key, dest.Value.EnValue, dest.Value.ArValue);
             }
         }
 
@@ -293,20 +306,23 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             var mapping = new LookupValueMapping
             {
                 SourceLookupCode = source.Key,
-                SourceLookupValue = source.Value
+                SourceLookupEnValue = source.Value.EnValue,
+                SourceLookupArValue = source.Value.ArValue
             };
 
             // Try to find matching destination value (case-insensitive)
-            if (destByValue.TryGetValue(source.Value, out var destMatch))
+            if (destByValue.TryGetSimilarValue(source.Value, out var destMatch))
             {
-                mapping.DestinationLookupCode = destMatch.code;
-                mapping.DestinationLookupValue = destMatch.value;
+                mapping.DestinationLookupCode = destMatch.Code;
+                mapping.DestinationLookupEnValue = destMatch.EnValue;
+                mapping.DestinationLookupArValue = destMatch.ArValue;
             }
             else
             {
                 // No match found - set destination as empty/null
                 mapping.DestinationLookupCode = string.Empty;
-                mapping.DestinationLookupValue = string.Empty;
+                mapping.DestinationLookupEnValue = string.Empty;
+                mapping.DestinationLookupArValue = string.Empty;
             }
 
             analysis.ValuesMapping.Add(mapping);

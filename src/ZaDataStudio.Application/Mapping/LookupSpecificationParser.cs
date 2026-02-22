@@ -17,22 +17,25 @@ public class LookupSpecificationParser
         if (string.IsNullOrWhiteSpace(specification))
             return null;
 
-        // Pattern: [ValueColumnName].[TableName].[ColumnName] = Value [ON [JoinColumnName] (optional)] [whereCondition (optional)]
-        // WHERE [dbo].[VolunteerSkills].[Activity_Lookup_Category_Code] = 'SKLLS'
-        var pattern = @"\[([^\]]+)\]\.\[([^\]]+)\]\.\[([^\]]+)\]\s*(!=|=)\s*(.+?)(?:\s+ON\s+\[([^\]]+)\])?(?:\s+WHERE\s+(.+))?$";
+        // Pattern: [EnValueColumnName,ArValueColumnName].[TableName].[ColumnName] = Value
+        // Optional: ON [JoinColumnName]
+        // Optional: WHERE [condition]
+        // Example: [ValueColumnName].[TableName].[ColumnName] = Value ON [JoinColumnName] WHERE condition
+        var pattern = @"\[(.+?)(?:,(.+?))?\]\.\[([^\]]+)\](?:\.\[([^\]]+)\]\s*(!=|=)\s*(.+?))?(?:\s+ON\s+\[([^\]]+)\])?(?:\s+WHERE\s+(.+))?$";
         var match = Regex.Match(specification.Trim(), pattern);
 
         if (match.Success)
         {
             return new LookupTableSpec
             {
-                ValueColumnName = match.Groups[1].Value.Trim(),
-                TableName = match.Groups[2].Value.Trim(),
-                ColumnName = match.Groups[3].Value.Trim(),
-                FilterOperator = match.Groups[4].Value.Trim(),
-                FilterValue = match.Groups[5].Value.Trim(),
-                JoinColumnName = match.Groups.Count > 6 && match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty,
-                WhereCondition = match.Groups.Count > 7 && match.Groups[7].Success ? match.Groups[7].Value.Trim() : string.Empty,
+                EnValueColumnName = match.Groups[1].Value.Trim(),
+                ArValueColumnName = match.Groups[2].Value.Trim(),
+                TableName       = match.Groups[3].Success ? match.Groups[3].Value.Trim() : string.Empty,
+                ColumnName      = match.Groups.Count > 4 && match.Groups[4].Success ? match.Groups[4].Value.Trim() : string.Empty,
+                FilterOperator  = match.Groups.Count > 5 && match.Groups[5].Success ? match.Groups[5].Value.Trim() : string.Empty,
+                FilterValue     = match.Groups.Count > 6 && match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty,
+                JoinColumnName  = match.Groups.Count > 7 && match.Groups[7].Success ? match.Groups[7].Value.Trim() : string.Empty,
+                WhereCondition  = match.Groups.Count > 8 && match.Groups[8].Success ? match.Groups[8].Value.Trim() : string.Empty,
                 RawSpecification = specification
             };
         }
@@ -46,7 +49,7 @@ public class LookupSpecificationParser
     public static string GenerateLookupQuery(LookupTableSpec spec, string? valueColumn = null, string? additionalWhere = null)
     {
         var tableName = FormatTableName(spec.TableName);
-        var query = $"SELECT * FROM {tableName} WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}";
+        var query = $"SELECT * FROM {tableName} {(!string.IsNullOrEmpty(spec.ColumnName) ? $"WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}" : "") }";
         
         if (!string.IsNullOrWhiteSpace(spec.WhereCondition))
         {
@@ -88,7 +91,8 @@ public class LookupSpecificationParser
 /// </summary>
 public class LookupTableSpec
 {
-    public string ValueColumnName { get; set; } = string.Empty;
+    public string EnValueColumnName { get; set; } = string.Empty;
+    public string ArValueColumnName { get; set; } = string.Empty;
     public string TableName { get; set; } = string.Empty;
     public string ColumnName { get; set; } = string.Empty;
     public string FilterOperator { get; set; } = string.Empty;
@@ -98,7 +102,7 @@ public class LookupTableSpec
     public string RawSpecification { get; set; } = string.Empty;
 
     public bool IsValid =>
-        !string.IsNullOrWhiteSpace(ValueColumnName) &&
+        !string.IsNullOrWhiteSpace(EnValueColumnName) &&
         !string.IsNullOrWhiteSpace(TableName) && 
         !string.IsNullOrWhiteSpace(ColumnName) &&
         !string.IsNullOrWhiteSpace(FilterOperator) &&
