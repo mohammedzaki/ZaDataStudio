@@ -1,0 +1,284 @@
+@using ZaDataStudio.Application.Mapping
+@using Microsoft.Extensions.Configuration
+@inject SemanticMatchingSettingsService SettingsService
+@inject IConfiguration Configuration
+
+<div class="card mb-3">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">
+            <span class="bi bi-robot me-2"></span>
+            AI Semantic Matching Settings
+        </h6>
+        <div class="form-check form-switch">
+            <input class="form-check-input" 
+                   type="checkbox" 
+                   id="enableSemanticMatching" 
+                   @bind="SettingsService.Enabled" />
+            <label class="form-check-label" for="enableSemanticMatching">
+                @(SettingsService.Enabled ? "Enabled" : "Disabled")
+            </label>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (SettingsService.Enabled)
+        {
+            <!-- Provider Selection -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">
+                    <span class="bi bi-gear me-1"></span>
+                    AI Provider
+                </label>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="form-check card @(SettingsService.Provider == "OpenAI" ? "border-primary" : "")">
+                            <div class="card-body p-2">
+                                <input class="form-check-input" 
+                                       type="radio" 
+                                       name="provider" 
+                                       id="providerOpenAI" 
+                                       value="OpenAI"
+                                       checked="@(SettingsService.Provider == "OpenAI")"
+                                       @onchange="@(() => OnProviderChanged("OpenAI"))"
+                                       disabled="@(!IsOpenAiAvailable)" />
+                                <label class="form-check-label ms-2" for="providerOpenAI">
+                                    <div class="fw-bold">OpenAI</div>
+                                    <small class="text-muted">Cloud • Paid • Fast</small>
+                                    @if (!IsOpenAiAvailable)
+                                    {
+                                        <div class="text-danger small">
+                                            <span class="bi bi-exclamation-triangle"></span>
+                                            Not configured
+                                        </div>
+                                    }
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="form-check card @(SettingsService.Provider == "Onnx" ? "border-success" : "")">
+                            <div class="card-body p-2">
+                                <input class="form-check-input" 
+                                       type="radio" 
+                                       name="provider" 
+                                       id="providerOnnx" 
+                                       value="Onnx"
+                                       checked="@(SettingsService.Provider == "Onnx")"
+                                       @onchange="@(() => OnProviderChanged("Onnx"))"
+                                       disabled="@(!IsOnnxAvailable)" />
+                                <label class="form-check-label ms-2" for="providerOnnx">
+                                    <div class="fw-bold">ONNX (Local)</div>
+                                    <small class="text-muted">Offline • Free • Slower</small>
+                                    @if (!IsOnnxAvailable)
+                                    {
+                                        <div class="text-danger small">
+                                            <span class="bi bi-exclamation-triangle"></span>
+                                            Model not found
+                                        </div>
+                                    }
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="form-check card @(SettingsService.Provider == "AzureOpenAI" ? "border-info" : "")">
+                            <div class="card-body p-2">
+                                <input class="form-check-input" 
+                                       type="radio" 
+                                       name="provider" 
+                                       id="providerAzure" 
+                                       value="AzureOpenAI"
+                                       checked="@(SettingsService.Provider == "AzureOpenAI")"
+                                       @onchange="@(() => OnProviderChanged("AzureOpenAI"))"
+                                       disabled="@(!IsAzureAvailable)" />
+                                <label class="form-check-label ms-2" for="providerAzure">
+                                    <div class="fw-bold">Azure OpenAI</div>
+                                    <small class="text-muted">Cloud • Paid • Enterprise</small>
+                                    @if (!IsAzureAvailable)
+                                    {
+                                        <div class="text-danger small">
+                                            <span class="bi bi-exclamation-triangle"></span>
+                                            Not configured
+                                        </div>
+                                    }
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-2 mb-0">
+                    <small>
+                        <span class="bi bi-info-circle me-1"></span>
+                        @SettingsService.GetProviderDescription(SettingsService.Provider)
+                    </small>
+                </div>
+
+                @if (RequiresRestart)
+                {
+                    <div class="alert alert-warning mt-2 mb-0">
+                        <span class="bi bi-exclamation-triangle me-2"></span>
+                        <strong>Note:</strong> Changing provider requires application restart to take effect.
+                    </div>
+                }
+            </div>
+
+            <!-- Model Selection -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">
+                    <span class="bi bi-cpu me-1"></span>
+                    Model
+                </label>
+                <select class="form-select" 
+                        value="@SettingsService.Model"
+                        @onchange="OnModelChanged">
+                    @foreach (var model in SettingsService.GetAvailableModels())
+                    {
+                        <option value="@model">@model</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrEmpty(SettingsService.Model))
+                {
+                    <div class="alert alert-info mt-2 mb-0">
+                        <small>
+                            <span class="bi bi-info-circle me-1"></span>
+                            @SettingsService.GetModelDescription(SettingsService.Model)
+                        </small>
+                    </div>
+                }
+            </div>
+
+            <!-- Similarity Threshold Slider -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">
+                    <span class="bi bi-sliders me-1"></span>
+                    Similarity Threshold: <span class="badge bg-primary">@SettingsService.SimilarityThreshold.ToString("P0")</span>
+                </label>
+                <input type="range" 
+                       class="form-range" 
+                       min="0.1" 
+                       max="1.0" 
+                       step="0.05" 
+                       @bind="SettingsService.SimilarityThreshold" 
+                       @bind:event="oninput" />
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>10% (More matches, less accurate)</span>
+                    <span>100% (Fewer matches, more accurate)</span>
+                </div>
+
+                <div class="alert alert-secondary mt-2 mb-0">
+                    <small>
+                        <span class="bi bi-lightbulb me-1"></span>
+                        <strong>Recommendation:</strong>
+                        @GetThresholdRecommendation()
+                    </small>
+                </div>
+            </div>
+
+            <!-- Current Configuration Summary -->
+            <div class="border-top pt-3">
+                <h6 class="text-muted small mb-2">Current Configuration:</h6>
+                <ul class="list-unstyled small mb-0">
+                    <li>
+                        <span class="bi bi-check-circle text-success me-1"></span>
+                        Provider: <strong>@SettingsService.GetProviderDisplayName(SettingsService.Provider)</strong>
+                    </li>
+                    <li>
+                        <span class="bi bi-check-circle text-success me-1"></span>
+                        Model: <strong>@SettingsService.Model</strong>
+                    </li>
+                    <li>
+                        <span class="bi bi-check-circle text-success me-1"></span>
+                        Threshold: <strong>@SettingsService.SimilarityThreshold.ToString("P0")</strong>
+                    </li>
+                    <li>
+                        <span class="bi bi-check-circle text-success me-1"></span>
+                        Status: <strong class="text-success">Ready</strong>
+                    </li>
+                </ul>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning mb-0">
+                <span class="bi bi-exclamation-triangle me-2"></span>
+                Semantic matching is disabled. Enable it to automatically match similar lookup values using AI.
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool IsOpenAiAvailable => CheckOpenAiAvailable();
+    private bool IsOnnxAvailable => CheckOnnxAvailable();
+    private bool IsAzureAvailable => CheckAzureAvailable();
+    private bool RequiresRestart = false;
+
+    protected override void OnInitialized()
+    {
+        SettingsService.OnSettingsChanged += () => InvokeAsync(StateHasChanged);
+    }
+
+    private void OnProviderChanged(string provider)
+    {
+        SettingsService.Provider = provider;
+        RequiresRestart = true;
+        StateHasChanged();
+    }
+
+    private void OnModelChanged(ChangeEventArgs e)
+    {
+        if (e.Value != null)
+        {
+            SettingsService.Model = e.Value.ToString() ?? "";
+            StateHasChanged();
+        }
+    }
+
+    private bool CheckOpenAiAvailable()
+    {
+        var apiKey = Configuration["OpenAI:ApiKey"];
+        return !string.IsNullOrWhiteSpace(apiKey);
+    }
+
+    private bool CheckOnnxAvailable()
+    {
+        var modelPath = Configuration["Onnx:ModelPath"];
+        if (string.IsNullOrWhiteSpace(modelPath))
+            return false;
+
+        if (!Path.IsPathRooted(modelPath))
+        {
+            var contentRoot = Directory.GetCurrentDirectory();
+            modelPath = Path.Combine(contentRoot, modelPath);
+        }
+
+        return File.Exists(modelPath);
+    }
+
+    private bool CheckAzureAvailable()
+    {
+        var endpoint = Configuration["AzureOpenAI:Endpoint"];
+        var apiKey = Configuration["AzureOpenAI:ApiKey"];
+        return !string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(apiKey);
+    }
+
+    private string GetThresholdRecommendation()
+    {
+        return SettingsService.SimilarityThreshold switch
+        {
+            >= 0.9 => "Very strict - Only nearly identical matches (90-100%)",
+            >= 0.75 => "Recommended - Good balance of accuracy and coverage (75-90%)",
+            >= 0.6 => "Moderate - More matches but some false positives (60-75%)",
+            >= 0.4 => "Relaxed - Many matches but lower accuracy (40-60%)",
+            _ => "Very relaxed - High false positive rate (<40%)"
+        };
+    }
+
+    public void Dispose()
+    {
+        SettingsService.OnSettingsChanged -= () => InvokeAsync(StateHasChanged);
+    }
+}

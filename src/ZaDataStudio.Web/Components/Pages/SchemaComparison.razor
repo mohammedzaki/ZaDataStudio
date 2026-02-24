@@ -230,6 +230,9 @@
     </div>
 </div>
 
+<!-- Semantic Matching Settings -->
+<SemanticMatchingSettings />
+
 @if (sourceTestResult?.IsSuccessful == true && destTestResult?.IsSuccessful == true)
 {
     @if (showMultiSourceDialog)
@@ -366,6 +369,24 @@
                             </button>
                         }
                     </div>
+                    @if (_isMatching)
+                    {
+                        <div class="mt-3">
+                            <h5>Semantic Matching Progress:</h5>
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                     role="progressbar"
+                                     style="width: @(_matchingProgress?.PercentComplete ?? 0)%">
+                                    @(_matchingProgress?.PercentComplete ?? 0)%
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    @_matchingProgress?.Stage: @_matchingProgress?.Message
+                                </small>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
 
@@ -520,6 +541,8 @@
                                                             @foreach (var mapping in lookup.ValuesMapping)
                                                             {
                                                                 var isMatched = !string.IsNullOrEmpty(mapping.DestinationLookupEnValue);
+                                                                var isSemanticMatch = mapping.SemanticSimilarity.HasValue && mapping.SemanticSimilarity.Value > 0;
+
                                                                 <tr class="@(isMatched ? "" : "table-warning")">
                                                                     <td>
                                                                         <code class="small">@mapping.SourceLookupCode</code>
@@ -567,7 +590,14 @@
                                                                         }
                                                                     </td>
                                                                     <td class="text-center">
-                                                                        @if (isMatched)
+                                                                        @if (isSemanticMatch)
+                                                                        {
+                                                                            <span class="badge bg-success">
+                                                                                <span class="bi bi-check-circle me-1"></span>
+                                                                                AI Matched @(mapping.SemanticSimilarity.Value.ToString("P0"))
+                                                                            </span>
+                                                                        }
+                                                                        else if (isMatched)
                                                                         {
                                                                             <span class="badge bg-success">
                                                                                 <span class="bi bi-check-circle me-1"></span>

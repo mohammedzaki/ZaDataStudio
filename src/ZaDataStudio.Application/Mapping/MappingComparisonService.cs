@@ -28,7 +28,8 @@ public class MappingComparisonService : IMappingComparisonService
     public async Task<MappingComparisonResult> CompareMappingsAsync(
         DataMappingConfiguration sourceMapping,
         string sourceConnectionString,
-        string destinationConnectionString)
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress)
     {
         _sourceConnectionString = sourceConnectionString;
         _destinationConnectionString = destinationConnectionString;
@@ -63,7 +64,8 @@ public class MappingComparisonService : IMappingComparisonService
                             var lookupAnalysis = await _lookupAnalyzer.AnalyzeLookupColumnWithSpecAsync(
                                 columnMapping,
                                 _sourceConnectionString,
-                                _destinationConnectionString);
+                                _destinationConnectionString,
+                                progress);
 
                             lookupAnalysis.SourceTable = columnMapping.OldTableName;
                             lookupAnalysis.SourceColumn = columnMapping.OldColumn;
@@ -85,7 +87,8 @@ public class MappingComparisonService : IMappingComparisonService
                             var lookupAnalysis = await _lookupAnalyzer.AnalyzeLookupColumnAsync(
                                 columnMapping,
                                 _sourceConnectionString,
-                                _destinationConnectionString);
+                                _destinationConnectionString,
+                                progress);
 
                             lookupAnalysis.SourceTable = columnMapping.OldTableName;
                             lookupAnalysis.SourceColumn = columnMapping.OldColumn;

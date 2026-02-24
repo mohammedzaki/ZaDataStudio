@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.Data.SqlClient;
 using Microsoft.JSInterop;
 using ZaDataStudio.Application.Common.Interfaces;
@@ -57,10 +58,13 @@ public partial class SchemaComparison : ComponentBase
     private bool isExportingAnalysisExcel = false;
     private bool isGeneratingExcelSQL = false;
     private MappingComparisonResult? excelComparisonResult;
-    private IMappingComparisonService MappingComparisonService;
 
     // Manual mapping SQL generation
     private string manualMappingGeneratedSQL = string.Empty;
+
+    private bool _success;
+    private bool _isMatching;
+    private MatchingProgress? _matchingProgress;
 
     // Session management
     private bool showSaveDialog = false;
@@ -69,30 +73,38 @@ public partial class SchemaComparison : ComponentBase
     private string saveMessage = string.Empty;
     private string loadMessage = string.Empty;
     private List<ComparisonSession> savedSessions = new();
-    private ISessionRepository SessionRepository;
-    private SqlServerComparisonService ComparisonService;
-    private IDatabaseService DatabaseService;
-    private DataComparisonService DataComparisonService;
-    private ExcelMappingService ExcelMappingService;
-    private IJSRuntime JSRuntime;
+    [Inject]
+    private ISessionRepository SessionRepository { get; set; }
+    [Inject]
+    private SqlServerComparisonService ComparisonService { get; set; }
+    [Inject]
+    private IDatabaseService DatabaseService { get; set; }
+    [Inject]
+    private DataComparisonService DataComparisonService { get; set; }
+    [Inject]
+    private ExcelMappingService ExcelMappingService { get; set; }
+    [Inject]
+    private IMappingComparisonService MappingComparisonService { get; set; }
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; }
 
-    public SchemaComparison(
-        ISessionRepository sessionRepository, 
-        SqlServerComparisonService comparisonService,
-        IDatabaseService databaseService,
-        DataComparisonService dataComparisonService,
-        ExcelMappingService excelMappingService,
-        IMappingComparisonService mappingComparisonService,
-        IJSRuntime jsRuntime) 
-    {
-        SessionRepository = sessionRepository;
-        ComparisonService = comparisonService;
-        DatabaseService = databaseService;
-        DataComparisonService = dataComparisonService;
-        ExcelMappingService = excelMappingService;
-        MappingComparisonService = mappingComparisonService;
-        JSRuntime = jsRuntime;
-    }
+    //public SchemaComparison(
+    //    ISessionRepository sessionRepository, 
+    //    SqlServerComparisonService comparisonService,
+    //    IDatabaseService databaseService,
+    //    DataComparisonService dataComparisonService,
+    //    ExcelMappingService excelMappingService,
+    //    IMappingComparisonService mappingComparisonService,
+    //    IJSRuntime jsRuntime) 
+    //{
+    //    SessionRepository = sessionRepository;
+    //    ComparisonService = comparisonService;
+    //    DatabaseService = databaseService;
+    //    DataComparisonService = dataComparisonService;
+    //    ExcelMappingService = excelMappingService;
+    //    MappingComparisonService = mappingComparisonService;
+    //    JSRuntime = jsRuntime;
+    //}
 
     protected override async Task OnInitializedAsync()
     {
@@ -1524,6 +1536,8 @@ public partial class SchemaComparison : ComponentBase
 
     private async Task CompareExcelMappings()
     {
+        _matchingProgress = null;
+        _success = false;
         if (excelMappingConfig == null)
         {
             errorMessage = "No Excel mappings loaded.";
@@ -1535,8 +1549,20 @@ public partial class SchemaComparison : ComponentBase
 
         try
         {
-            excelComparisonResult = await MappingComparisonService.CompareMappingsAsync(excelMappingConfig, 
-                sourceConnectionString, destinationConnectionString);
+            _isMatching = true;
+            StateHasChanged();
+
+            var progress = new Progress<MatchingProgress>(p =>
+            {
+                _matchingProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            excelComparisonResult = await MappingComparisonService.CompareMappingsAsync(
+                excelMappingConfig, 
+                sourceConnectionString, 
+                destinationConnectionString,
+                progress);
         }
         catch (Exception ex)
         {
@@ -1545,6 +1571,8 @@ public partial class SchemaComparison : ComponentBase
         finally
         {
             isComparingExcelMappings = false;
+            _isMatching = false;
+            StateHasChanged();
         }
     }
 }

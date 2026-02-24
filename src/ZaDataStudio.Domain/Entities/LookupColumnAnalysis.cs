@@ -38,6 +38,17 @@ public class LookupValueMapping
     public string DestinationLookupCode { get; set; } = string.Empty;
     public string DestinationLookupEnValue { get; set; } = string.Empty;
     public string DestinationLookupArValue { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Semantic similarity score (0-1) if matched using AI
+    /// Null if matched exactly or not using semantic matching
+    /// </summary>
+    public double? SemanticSimilarity { get; set; }
+
+    /// <summary>
+    /// Convenience property to get destination lookup value
+    /// </summary>
+    public string DestinationLookupValue => DestinationLookupEnValue;
 }
 
 public record LookupValue(string Code, string EnValue, string ArValue);

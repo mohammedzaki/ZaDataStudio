@@ -10,5 +10,6 @@ public interface IMappingComparisonService
     public Task<MappingComparisonResult> CompareMappingsAsync(
         DataMappingConfiguration dataMappingConfiguration, 
         string sourceConnectionString, 
-        string destinationConnectionString);
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress);
 }

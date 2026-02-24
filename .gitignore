@@ -405,3 +405,6 @@ FodyWeavers.xsd
 appsettings.Development.json
 **/Properties/launchSettings.json
 .output/
+/src/ZaDataStudio.Web/Models/paraphrase-multilingual-MiniLM-L12-v2.onnx
+*.onnx
+/src/ZaDataStudio.Web/Models/vocab.txt

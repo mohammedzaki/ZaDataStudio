@@ -8,4 +8,7 @@
     <Project Path="src/ZaDataStudio.ServiceDefaults/ZaDataStudio.ServiceDefaults.csproj" />
     <Project Path="src/ZaDataStudio.Web/ZaDataStudio.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="src/ZaDataStudio.Tests/ZaDataStudio.Tests.csproj" />
+  </Folder>
 </Solution>
