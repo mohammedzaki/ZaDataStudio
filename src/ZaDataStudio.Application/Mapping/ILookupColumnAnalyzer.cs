@@ -13,7 +13,8 @@ public interface ILookupColumnAnalyzer
     Task<LookupColumnAnalysis> AnalyzeLookupColumnAsync(
         DataColumnMapping columnMapping,
         string sourceConnectionString,
-        string destinationConnectionString);
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress);
 
     /// <summary>
     /// Analyze lookup column with specification format
@@ -22,5 +23,6 @@ public interface ILookupColumnAnalyzer
     Task<LookupColumnAnalysis> AnalyzeLookupColumnWithSpecAsync(
         DataColumnMapping columnMapping,
         string sourceConnectionString,
-        string destinationConnectionString);
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress);
 }

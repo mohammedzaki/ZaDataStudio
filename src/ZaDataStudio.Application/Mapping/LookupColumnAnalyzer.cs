@@ -10,11 +10,15 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
 {
     private readonly IDatabaseService _databaseService;
     private readonly MappingRuleEngine _ruleEngine;
+    private readonly SemanticLookupMatcher? _semanticMatcher;
 
-    public LookupColumnAnalyzer(IDatabaseService databaseService)
+    public LookupColumnAnalyzer(
+        IDatabaseService databaseService, 
+        SemanticLookupMatcher? semanticMatcher = null)
     {
         _databaseService = databaseService;
         _ruleEngine = new MappingRuleEngine();
+        _semanticMatcher = semanticMatcher;
     }
 
     /// <summary>
@@ -23,7 +27,8 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
     public async Task<LookupColumnAnalysis> AnalyzeLookupColumnAsync(
         DataColumnMapping columnMapping,
         string sourceConnectionString,
-        string destinationConnectionString)
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress)
     {
         var analysis = new LookupColumnAnalysis();
 
@@ -86,7 +91,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             .ToList();
 
         // Build values mapping for matched and unmatched values
-        BuildValuesMapping(analysis);
+        await BuildValuesMappingAsync(analysis, progress);
 
         return analysis;
     }
@@ -98,7 +103,8 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
     public async Task<LookupColumnAnalysis> AnalyzeLookupColumnWithSpecAsync(
         DataColumnMapping columnMapping,
         string sourceConnectionString,
-        string destinationConnectionString)
+        string destinationConnectionString,
+        Progress<MatchingProgress> progress)
     {
         var analysis = new LookupColumnAnalysis();
 
@@ -158,7 +164,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         else
         {
             // Fallback to standard lookup analysis (without specification)
-            analysis = await AnalyzeLookupColumnAsync(columnMapping, sourceConnectionString, destinationConnectionString);
+            analysis = await AnalyzeLookupColumnAsync(columnMapping, sourceConnectionString, destinationConnectionString, progress);
         }
 
         // Count mismatches
@@ -225,7 +231,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         }
 
         // Build values mapping for matched and unmatched values
-        BuildValuesMapping(analysis);
+        await BuildValuesMappingAsync(analysis, progress);
 
         return analysis;
     }
@@ -285,8 +291,9 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
 
     /// <summary> 
     /// Build values mapping showing matched and unmatched values
+    /// Uses semantic matching for unmatched values if available
     /// </summary>
-    private void BuildValuesMapping(LookupColumnAnalysis analysis)
+    private async Task BuildValuesMappingAsync(LookupColumnAnalysis analysis, Progress<MatchingProgress> progress)
     {
         analysis.ValuesMapping.Clear();
 
@@ -300,6 +307,9 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
         }
 
+        // Collect unmatched source values for batch semantic matching
+        var unmatchedSources = new List<(string Key, LookupValue Value)>();
+
         // Map all source values
         foreach (var source in analysis.SourceSampleValues)
         {
@@ -310,7 +320,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 SourceLookupArValue = source.Value.ArValue
             };
 
-            // Try to find matching destination value (case-insensitive)
+            // Try to find matching destination value (case-insensitive exact match)
             if (destByValue.TryGetSimilarValue(source.Value, out var destMatch))
             {
                 mapping.DestinationLookupCode = destMatch.Code;
@@ -319,13 +329,60 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
             else
             {
-                // No match found - set destination as empty/null
+                // No exact match - collect for semantic matching
+                unmatchedSources.Add((source.Key, source.Value));
+
+                // Temporarily set as unmatched
                 mapping.DestinationLookupCode = string.Empty;
                 mapping.DestinationLookupEnValue = string.Empty;
                 mapping.DestinationLookupArValue = string.Empty;
             }
 
             analysis.ValuesMapping.Add(mapping);
+        }
+
+        // Try semantic matching for unmatched values
+        if (_semanticMatcher != null && unmatchedSources.Any() && analysis.DestinationSampleValues.Any())
+        {
+            try
+            {
+                var destValues = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToList();
+                var sourceValues = unmatchedSources.Select(s => s.Value.EnValue).ToList();
+
+                // Batch match for better performance
+                var semanticMatches = await _semanticMatcher.BatchMatchAsync(
+                    sourceValues, 
+                    destValues, 
+                    progress, 
+                    cancellationToken: default);
+
+                // Update mappings with semantic matches
+                foreach (var unmatched in unmatchedSources)
+                {
+                    if (semanticMatches.TryGetValue(unmatched.Value.EnValue, out var match) && match.Match != null)
+                    {
+                        // Find the mapping and update it
+                        var mapping = analysis.ValuesMapping.FirstOrDefault(m => 
+                            m.SourceLookupCode == unmatched.Key && 
+                            string.IsNullOrEmpty(m.DestinationLookupCode));
+
+                        if (mapping != null && destByValue.TryGetValue(match.Match, out var destMatch))
+                        {
+                            mapping.DestinationLookupCode = destMatch.Code;
+                            mapping.DestinationLookupEnValue = destMatch.EnValue;
+                            mapping.DestinationLookupArValue = destMatch.ArValue;
+                            mapping.SemanticSimilarity = match.Similarity;
+
+                            Console.WriteLine($"Semantic match: '{unmatched.Value.EnValue}' → '{match.Match}' (similarity: {match.Similarity:P0})");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Semantic matching failed: {ex.Message}");
+                // Continue without semantic matching - exact matches are already done
+            }
         }
     }
 

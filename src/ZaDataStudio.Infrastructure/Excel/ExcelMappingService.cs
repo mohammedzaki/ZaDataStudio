@@ -814,39 +814,52 @@ public class ExcelMappingService
                 sheet.Cell(row, 3).Value = "New Code";
                 sheet.Cell(row, 4).Value = "New Value";
                 sheet.Cell(row, 5).Value = "Status";
-                sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
-                sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightGray;
+                sheet.Cell(row, 6).Value = "AI Match %";
+                sheet.Range(row, 1, row, 6).Style.Font.Bold = true;
+                sheet.Range(row, 1, row, 6).Style.Fill.BackgroundColor = XLColor.LightGray;
                 row++;
 
                 var matchedCount = 0;
                 var missingCount = 0;
+                var semanticMatchCount = 0;
 
                 foreach (var valueMap in lookup.ValuesMapping)
                 {
                     if (row > maxRow - 100) // Leave some buffer
                     {
                         sheet.Cell(row, 1).Value = $"... truncated, {lookup.ValuesMapping.Count - (row - (lookup.ValuesMapping.Count + row))} more rows";
-                        sheet.Range(row, 1, row, 5).Merge();
+                        sheet.Range(row, 1, row, 6).Merge();
                         break;
                     }
 
                     var isMatched = !string.IsNullOrEmpty(valueMap.DestinationLookupEnValue);
+                    var isSemanticMatch = valueMap.SemanticSimilarity.HasValue && valueMap.SemanticSimilarity.Value > 0;
 
                     sheet.Cell(row, 1).Value = valueMap.SourceLookupCode ?? "";
                     sheet.Cell(row, 2).Value = valueMap.SourceLookupEnValue ?? "";
                     sheet.Cell(row, 3).Value = isMatched ? (valueMap.DestinationLookupCode ?? "") : "-";
                     sheet.Cell(row, 4).Value = isMatched ? (valueMap.DestinationLookupEnValue ?? "") : "No match";
-                    sheet.Cell(row, 5).Value = isMatched ? "✓ Matched" : "✗ Missing";
 
-                    // Color code the row
-                    if (isMatched)
+                    if (isSemanticMatch)
                     {
+                        sheet.Cell(row, 5).Value = "🤖 AI Match";
+                        sheet.Cell(row, 6).Value = $"{valueMap.SemanticSimilarity.Value:P0}";
+                        sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.LightCyan;
+                        sheet.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.LightCyan;
+                        semanticMatchCount++;
+                    }
+                    else if (isMatched)
+                    {
+                        sheet.Cell(row, 5).Value = "✓ Exact Match";
+                        sheet.Cell(row, 6).Value = "100%";
                         sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.LightGreen;
                         matchedCount++;
                     }
                     else
                     {
-                        sheet.Range(row, 1, row, 5).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                        sheet.Cell(row, 5).Value = "✗ Missing";
+                        sheet.Cell(row, 6).Value = "-";
+                        sheet.Range(row, 1, row, 6).Style.Fill.BackgroundColor = XLColor.LightYellow;
                         sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.Yellow;
                         missingCount++;
                     }
@@ -857,16 +870,19 @@ public class ExcelMappingService
                 // Summary footer
                 sheet.Cell(row, 1).Value = "SUMMARY";
                 sheet.Cell(row, 1).Style.Font.Bold = true;
-                sheet.Cell(row, 2).Value = $"{matchedCount} Matched";
+                sheet.Cell(row, 2).Value = $"{matchedCount} Exact";
                 sheet.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
-                sheet.Cell(row, 3).Value = $"{missingCount} Missing";
-                sheet.Cell(row, 3).Style.Fill.BackgroundColor = XLColor.Yellow;
+                sheet.Cell(row, 3).Value = $"{semanticMatchCount} AI";
+                sheet.Cell(row, 3).Style.Fill.BackgroundColor = XLColor.LightCyan;
+                sheet.Cell(row, 4).Value = $"{missingCount} Missing";
+                sheet.Cell(row, 4).Style.Fill.BackgroundColor = XLColor.Yellow;
 
-                var totalCount = matchedCount + missingCount;
-                var percentage = totalCount > 0 ? (matchedCount * 100.0 / totalCount) : 0;
-                sheet.Cell(row, 4).Value = $"{percentage:F1}%";
-                sheet.Cell(row, 4).Style.Font.Bold = true;
-                sheet.Range(row, 1, row, 5).Style.Font.Bold = true;
+                var totalCount = matchedCount + semanticMatchCount + missingCount;
+                var totalMatched = matchedCount + semanticMatchCount;
+                var percentage = totalCount > 0 ? (totalMatched * 100.0 / totalCount) : 0;
+                sheet.Cell(row, 5).Value = $"{percentage:F1}%";
+                sheet.Cell(row, 5).Style.Font.Bold = true;
+                sheet.Range(row, 1, row, 6).Style.Font.Bold = true;
                 row++;
 
                 row += 2; // Extra blank rows
