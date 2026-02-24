@@ -13,15 +13,10 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
     private readonly SemanticLookupMatcher? _semanticMatcher;
     private readonly SemanticMatchingSettingsService? _settingsService;
 
-    public LookupColumnAnalyzer(
-        IDatabaseService databaseService, 
-        SemanticLookupMatcher? semanticMatcher = null,
-        SemanticMatchingSettingsService? settingsService = null)
+    public LookupColumnAnalyzer(IDatabaseService databaseService)
     {
         _databaseService = databaseService;
         _ruleEngine = new MappingRuleEngine();
-        _semanticMatcher = semanticMatcher;
-        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -342,54 +337,6 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
 
             analysis.ValuesMapping.Add(mapping);
-        }
-
-        // Try semantic matching for unmatched values
-        // Use settings service to create matcher with current settings (runtime switching)
-        // or fallback to injected _semanticMatcher
-        var matcher = _settingsService?.CreateMatcher() ?? _semanticMatcher;
-
-        if (matcher != null && unmatchedSources.Any() && analysis.DestinationSampleValues.Any())
-        {
-            try
-            {
-                var destValues = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToList();
-                var sourceValues = unmatchedSources.Select(s => s.Value.EnValue).ToList();
-
-                // Batch match for better performance
-                var semanticMatches = await matcher.BatchMatchAsync(
-                    sourceValues, 
-                    destValues, 
-                    progress,
-                    cancellationToken: default);
-
-                // Update mappings with semantic matches
-                foreach (var unmatched in unmatchedSources)
-                {
-                    if (semanticMatches.TryGetValue(unmatched.Value.EnValue, out var match) && match.Match != null)
-                    {
-                        // Find the mapping and update it
-                        var mapping = analysis.ValuesMapping.FirstOrDefault(m => 
-                            m.SourceLookupCode == unmatched.Key && 
-                            string.IsNullOrEmpty(m.DestinationLookupCode));
-
-                        if (mapping != null && destByValue.TryGetValue(match.Match, out var destMatch))
-                        {
-                            mapping.DestinationLookupCode = destMatch.Code;
-                            mapping.DestinationLookupEnValue = destMatch.EnValue;
-                            mapping.DestinationLookupArValue = destMatch.ArValue;
-                            mapping.SemanticSimilarity = match.Similarity;
-
-                            Console.WriteLine($"Semantic match: '{unmatched.Value.EnValue}' → '{match.Match}' (similarity: {match.Similarity:P0})");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Semantic matching failed: {ex.Message}");
-                // Continue without semantic matching - exact matches are already done
-            }
         }
     }
 
