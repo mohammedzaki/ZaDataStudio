@@ -20,9 +20,8 @@ public class LookupSpecificationParser
         // Pattern: [EnValueColumnName,ArValueColumnName].[TableName].[ColumnName] = Value
         // Optional: ON [JoinColumnName]
         // Optional: WHERE [condition]
-        // Example: [ValueColumnName].[TableName].[ColumnName] = Value ON [JoinColumnName] WHERE condition
-        var pattern = @"\[(.+?)(?:,(.+?))?\]\.\[([^\]]+)\](?:\.\[([^\]]+)\]\s*(!=|=)\s*(.+?))?(?:\s+ON\s+\[([^\]]+)\])?(?:\s+WHERE\s+(.+))?$";
-        var match = Regex.Match(specification.Trim(), pattern);
+        var pattern1 = @"\[(.+?)(?:,(.+?))?\]\.\[([^\]]+)\](?:\.\[([^\]]+)\]\s*(!=|=)\s*(.+?))?(?:\s+ON\s+\[([^\]]+)\])?(?:\s+WHERE\s+(.+))?$";
+        var match = Regex.Match(specification.Trim(), pattern1);
 
         if (match.Success)
         {
@@ -30,13 +29,36 @@ public class LookupSpecificationParser
             {
                 EnValueColumnName = match.Groups[1].Value.Trim(),
                 ArValueColumnName = match.Groups[2].Value.Trim(),
-                TableName       = match.Groups[3].Success ? match.Groups[3].Value.Trim() : string.Empty,
-                ColumnName      = match.Groups.Count > 4 && match.Groups[4].Success ? match.Groups[4].Value.Trim() : string.Empty,
-                FilterOperator  = match.Groups.Count > 5 && match.Groups[5].Success ? match.Groups[5].Value.Trim() : string.Empty,
-                FilterValue     = match.Groups.Count > 6 && match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty,
-                JoinColumnName  = match.Groups.Count > 7 && match.Groups[7].Success ? match.Groups[7].Value.Trim() : string.Empty,
-                WhereCondition  = match.Groups.Count > 8 && match.Groups[8].Success ? match.Groups[8].Value.Trim() : string.Empty,
-                RawSpecification = specification
+                TableName = match.Groups[3].Success ? match.Groups[3].Value.Trim() : string.Empty,
+                ColumnName = match.Groups.Count > 4 && match.Groups[4].Success ? match.Groups[4].Value.Trim() : string.Empty,
+                FilterOperator = match.Groups.Count > 5 && match.Groups[5].Success ? match.Groups[5].Value.Trim() : string.Empty,
+                FilterValue = match.Groups.Count > 6 && match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty,
+                JoinColumnName = match.Groups.Count > 7 && match.Groups[7].Success ? match.Groups[7].Value.Trim() : string.Empty,
+                WhereCondition = match.Groups.Count > 8 && match.Groups[8].Success ? match.Groups[8].Value.Trim() : string.Empty,
+                RawSpecification = specification,
+                LookupTableSpecType = LookupTableSpecType.Simple
+            };
+        }
+
+        // Pattern: [EnValueColumnName,ArValueColumnName] 1,2 FROM [TableName] 3  
+        // Optional: JOIN [JoinTable] 4 ON [TableNameColumnName] 5 = [JoinTableColumnName] 6
+        // Optional: WHERE [condition] 7
+        // Example: [EnValueColumnName,ArValueColumnName] FROM [TableName] JOIN [JoinTable] ON [TableNameColumnName] = [JoinTableColumnName] WHERE [ColumnName] = Value
+        var pattern2 = @"\[(.+?)(?:,(.+?))?\]\s+FROM\s+\[(.+?)\](?:\s+JOIN\s+\[(.+?)\]\s+ON\s+\[(.+?)\]\s+=\s+\[(.+?)\])?\s+WHERE\s+(.+?)$";
+        var matchPattern2 = Regex.Match(specification.Trim(), pattern2);
+        if (matchPattern2.Success)
+        { 
+            return new LookupTableSpec
+            {
+                EnValueColumnName = matchPattern2.Groups[1].Value.Trim(),
+                ArValueColumnName = matchPattern2.Groups[2].Value.Trim(),
+                TableName = matchPattern2.Groups[3].Success ? matchPattern2.Groups[3].Value.Trim() : string.Empty,
+                JoinTable = matchPattern2.Groups.Count > 4 && matchPattern2.Groups[4].Success ? matchPattern2.Groups[4].Value.Trim() : string.Empty,
+                ColumnName = matchPattern2.Groups.Count > 5 && matchPattern2.Groups[5].Success ? matchPattern2.Groups[5].Value.Trim() : string.Empty,
+                JoinColumnName = matchPattern2.Groups.Count > 6 && matchPattern2.Groups[6].Success ? matchPattern2.Groups[6].Value.Trim() : string.Empty,
+                WhereCondition = matchPattern2.Groups.Count > 7 && matchPattern2.Groups[7].Success ? matchPattern2.Groups[7].Value.Trim() : string.Empty,
+                RawSpecification = specification,
+                LookupTableSpecType = LookupTableSpecType.Join
             };
         }
 
@@ -61,6 +83,56 @@ public class LookupSpecificationParser
             query += $" AND {additionalWhere}";
         }
 
+        return query;
+    }
+
+    /// <summary>
+    /// Generate SQL query to get values from lookup table
+    /// </summary>
+    public static string GenerateLookupSqlExpression(LookupTableSpec spec)
+    {
+        var tableName = FormatTableName(spec.TableName);
+        var query = "";
+        switch (spec.LookupTableSpecType)
+        {
+            default:
+            case LookupTableSpecType.Simple:
+                query = $@"
+            SELECT DISTINCT TOP 50 [{spec.JoinColumnName}] AS LookupCode, 
+            [{spec.EnValueColumnName}] AS LookupEnValue
+            {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",[{spec.ArValueColumnName}] AS LookupArValue")}
+            FROM {tableName}
+            {(!string.IsNullOrEmpty(spec.ColumnName) ? $"WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}" : "")}
+            ORDER BY [{spec.JoinColumnName}]";
+                break;
+            case LookupTableSpecType.Join:
+                query = $@"
+            SELECT DISTINCT TOP 50 {tableName}.[{spec.JoinColumnName}] AS LookupCode, 
+            {tableName}.[{spec.EnValueColumnName}] AS LookupEnValue
+            {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",{tableName}.[{spec.ArValueColumnName}] AS LookupArValue")}
+            FROM {tableName}
+            {(!string.IsNullOrEmpty(spec.JoinTable) ? $"INNER JOIN [{spec.JoinTable}] ON [{spec.JoinTable}].[{spec.JoinColumnName}] = {tableName}.[{spec.ColumnName}]" : "")}
+            WHERE {spec.WhereCondition}
+            ORDER BY {tableName}.[{spec.JoinColumnName}]";
+                break;
+        }
+        return query;
+    }
+
+    /// <summary>
+    /// Generate SQL query to get values from lookup table
+    /// </summary>
+    public static string GenerateLookupSqlCountQuery(LookupTableSpec spec, string sourceTableName, string sourceColumnName)
+    {
+        var joinStr = @$"LEFT JOIN {spec.TableName} ON {spec.TableName}.{spec.JoinColumnName} = {sourceTableName}.{sourceColumnName}";
+        if (sourceTableName == spec.TableName)
+            joinStr = "";
+        var query = $@"
+                    SELECT [{sourceColumnName}], [{spec.EnValueColumnName}], COUNT(*) as RecordCount
+                    FROM {sourceTableName}
+                    {joinStr}
+                    GROUP BY [{sourceColumnName}], [{spec.EnValueColumnName}]
+                    ORDER BY RecordCount DESC";
         return query;
     }
 
@@ -97,16 +169,16 @@ public class LookupTableSpec
     public string ColumnName { get; set; } = string.Empty;
     public string FilterOperator { get; set; } = string.Empty;
     public string FilterValue { get; set; } = string.Empty;
+    public string JoinTable { get; set; } = string.Empty;
     public string JoinColumnName { get; set; } = string.Empty;
     public string WhereCondition { get; set; } = string.Empty;
     public string RawSpecification { get; set; } = string.Empty;
+    public LookupTableSpecType LookupTableSpecType { get; set; } = LookupTableSpecType.Simple;
+    public override string ToString() => $"{LookupTableSpecType}:{RawSpecification}";
+}
 
-    public bool IsValid =>
-        !string.IsNullOrWhiteSpace(EnValueColumnName) &&
-        !string.IsNullOrWhiteSpace(TableName) && 
-        !string.IsNullOrWhiteSpace(ColumnName) &&
-        !string.IsNullOrWhiteSpace(FilterOperator) &&
-        !string.IsNullOrWhiteSpace(FilterValue);
-
-    public override string ToString() => RawSpecification;
+public enum LookupTableSpecType
+{
+    Simple = 1,
+    Join = 2
 }

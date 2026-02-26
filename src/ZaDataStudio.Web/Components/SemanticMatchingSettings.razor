@@ -30,32 +30,6 @@
                 </label>
                 <div class="row g-2">
                     <div class="col-md-4">
-                        <div class="form-check card @(SettingsService.Provider == "OpenAI" ? "border-primary" : "")">
-                            <div class="card-body p-2">
-                                <input class="form-check-input" 
-                                       type="radio" 
-                                       name="provider" 
-                                       id="providerOpenAI" 
-                                       value="OpenAI"
-                                       checked="@(SettingsService.Provider == "OpenAI")"
-                                       @onchange="@(() => OnProviderChanged("OpenAI"))"
-                                       disabled="@(!IsOpenAiAvailable)" />
-                                <label class="form-check-label ms-2" for="providerOpenAI">
-                                    <div class="fw-bold">OpenAI</div>
-                                    <small class="text-muted">Cloud • Paid • Fast</small>
-                                    @if (!IsOpenAiAvailable)
-                                    {
-                                        <div class="text-danger small">
-                                            <span class="bi bi-exclamation-triangle"></span>
-                                            Not configured
-                                        </div>
-                                    }
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
                         <div class="form-check card @(SettingsService.Provider == "Onnx" ? "border-success" : "")">
                             <div class="card-body p-2">
                                 <input class="form-check-input" 
@@ -74,6 +48,32 @@
                                         <div class="text-danger small">
                                             <span class="bi bi-exclamation-triangle"></span>
                                             Model not found
+                                        </div>
+                                    }
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="form-check card @(SettingsService.Provider == "OpenAI" ? "border-primary" : "")">
+                            <div class="card-body p-2">
+                                <input class="form-check-input" 
+                                       type="radio" 
+                                       name="provider" 
+                                       id="providerOpenAI" 
+                                       value="OpenAI"
+                                       checked="@(SettingsService.Provider == "OpenAI")"
+                                       @onchange="@(() => OnProviderChanged("OpenAI"))"
+                                       disabled="@(!IsOpenAiAvailable)" />
+                                <label class="form-check-label ms-2" for="providerOpenAI">
+                                    <div class="fw-bold">OpenAI</div>
+                                    <small class="text-muted">Cloud • Paid • Fast</small>
+                                    @if (!IsOpenAiAvailable)
+                                    {
+                                        <div class="text-danger small">
+                                            <span class="bi bi-exclamation-triangle"></span>
+                                            Not configured
                                         </div>
                                     }
                                 </label>

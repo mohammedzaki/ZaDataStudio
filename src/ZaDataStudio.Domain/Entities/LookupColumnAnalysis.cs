@@ -35,6 +35,7 @@ public class LookupValueMapping
     public string SourceLookupCode { get; set; } = string.Empty;
     public string SourceLookupEnValue { get; set; } = string.Empty;
     public string SourceLookupArValue { get; set; } = string.Empty;
+    public string SourceLookupRecordsCount { get; set; } = string.Empty;
     public string DestinationLookupCode { get; set; } = string.Empty;
     public string DestinationLookupEnValue { get; set; } = string.Empty;
     public string DestinationLookupArValue { get; set; } = string.Empty;

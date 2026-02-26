@@ -432,10 +432,20 @@ public class ExcelMappingService
                 else if (analysisText.Contains("⚠"))
                 {
                     sheet.Cell(row, 17).Style.Fill.BackgroundColor = XLColor.Yellow;
+                    if (sheet.Cell(row, 16).Value.ToString().Trim() != "OutOfScope")
+                    {
+                        sheet.Cell(row, 16).Value = "Has Issues";
+                        sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.Yellow;
+                    }
                 }
                 else if (analysisText.Contains("✗"))
                 {
                     sheet.Cell(row, 17).Style.Fill.BackgroundColor = XLColor.LightPink;
+                    if (sheet.Cell(row, 16).Value.ToString().Trim() != "OutOfScope")
+                    {
+                        sheet.Cell(row, 16).Value = "Has Issues";
+                        sheet.Cell(row, 16).Style.Fill.BackgroundColor = XLColor.LightPink;
+                    }
                 }
 
                 // Add hyperlink to lookup analysis sheet if it exists
@@ -686,7 +696,7 @@ public class ExcelMappingService
             }
 
             // Destination Lookup Values Section
-            sheet.Cell(row, 1).Value = "DESTINATION LOOKUP VALUES";
+            sheet.Cell(row, 1).Value = "NEW LOOKUP VALUES";
             sheet.Cell(row, 1).Style.Font.Bold = true;
             sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
             sheet.Range(row, 1, row, 5).Merge();
@@ -736,7 +746,7 @@ public class ExcelMappingService
             row++; // Blank row
 
             // Source Lookup Values Section
-            sheet.Cell(row, 1).Value = "SOURCE LOOKUP VALUES";
+            sheet.Cell(row, 1).Value = "OLD LOOKUP VALUES";
             sheet.Cell(row, 1).Style.Font.Bold = true;
             sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
             sheet.Range(row, 1, row, 5).Merge();
@@ -775,7 +785,7 @@ public class ExcelMappingService
                     }
                     else
                     {
-                        sheet.Cell(row, 4).Value = "✗ NOT in Destination";
+                        sheet.Cell(row, 4).Value = "✗ NOT in New";
                         sheet.Cell(row, 4).Style.Fill.BackgroundColor = XLColor.LightPink;
                         sheet.Cell(row, 5).Value = "⚠ Needs mapping or insert";
                     }
@@ -792,7 +802,7 @@ public class ExcelMappingService
             }
             else
             {
-                sheet.Cell(row, 1).Value = "No source values found";
+                sheet.Cell(row, 1).Value = "No old values found";
                 sheet.Cell(row, 1).Style.Font.Italic = true;
                 row++;
             }
@@ -805,7 +815,7 @@ public class ExcelMappingService
                 sheet.Cell(row, 1).Value = "VALUES MAPPING";
                 sheet.Cell(row, 1).Style.Font.Bold = true;
                 sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
-                sheet.Range(row, 1, row, 5).Merge();
+                sheet.Range(row, 1, row, 7).Merge();
                 row++;
 
                 // Table headers
@@ -815,8 +825,9 @@ public class ExcelMappingService
                 sheet.Cell(row, 4).Value = "New Value";
                 sheet.Cell(row, 5).Value = "Status";
                 sheet.Cell(row, 6).Value = "AI Match %";
-                sheet.Range(row, 1, row, 6).Style.Font.Bold = true;
-                sheet.Range(row, 1, row, 6).Style.Fill.BackgroundColor = XLColor.LightGray;
+                sheet.Cell(row, 7).Value = "Current Records Count";
+                sheet.Range(row, 1, row, 7).Style.Font.Bold = true;
+                sheet.Range(row, 1, row, 7).Style.Fill.BackgroundColor = XLColor.LightGray;
                 row++;
 
                 var matchedCount = 0;
@@ -863,6 +874,7 @@ public class ExcelMappingService
                         sheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.Yellow;
                         missingCount++;
                     }
+                    sheet.Cell(row, 7).Value = valueMap.SourceLookupRecordsCount;
 
                     row++;
                 }

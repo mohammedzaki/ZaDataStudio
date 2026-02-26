@@ -77,8 +77,8 @@ builder.Services.AddScoped<ILookupColumnAnalyzer>(sp =>
 {
     var databaseService = sp.GetRequiredService<IDatabaseService>();
     var settingsService = sp.GetRequiredService<SemanticMatchingSettingsService>();
-    var semanticMatcher = sp.GetService<SemanticLookupMatcher>(); // May be null
-    return new LookupColumnAnalyzer(databaseService, semanticMatcher, settingsService);
+    // var semanticMatcher = sp.GetService<SemanticLookupMatcher>(); // May be null
+    return new LookupColumnAnalyzer(databaseService, settingsService);
 });
 
 if (semanticConfig.GetValue<bool>("Enabled", false))

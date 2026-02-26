@@ -10,17 +10,17 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
 {
     private readonly IDatabaseService _databaseService;
     private readonly MappingRuleEngine _ruleEngine;
-    private readonly SemanticLookupMatcher? _semanticMatcher;
+    //private readonly SemanticLookupMatcher? _semanticMatcher;
     private readonly SemanticMatchingSettingsService? _settingsService;
 
     public LookupColumnAnalyzer(
         IDatabaseService databaseService, 
-        SemanticLookupMatcher? semanticMatcher = null,
+        //SemanticLookupMatcher? semanticMatcher = null,
         SemanticMatchingSettingsService? settingsService = null)
     {
         _databaseService = databaseService;
         _ruleEngine = new MappingRuleEngine();
-        _semanticMatcher = semanticMatcher;
+        //_semanticMatcher = semanticMatcher;
         _settingsService = settingsService;
     }
 
@@ -94,7 +94,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             .ToList();
 
         // Build values mapping for matched and unmatched values
-        await BuildValuesMappingAsync(analysis, progress);
+        await BuildValuesMappingAsync(analysis, null, progress);
 
         return analysis;
     }
@@ -151,18 +151,6 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             analysis.MismatchedValues = analysis.SourceSampleValues.Values.Select(v => v.EnValue)
                 .Where(v => !destValuesSet.Contains(v))
                 .ToList();
-
-            // Check if filter values match
-            if (oldLookupSpec != null && newLookupSpec != null)
-            {
-                if (oldLookupSpec.ColumnName == newLookupSpec.ColumnName &&
-                    oldLookupSpec.FilterValue != newLookupSpec.FilterValue)
-                {
-                    analysis.LookupFilterMismatch = true;
-                    analysis.LookupFilterMessage =
-                        $"Lookup filter mismatch: Old={oldLookupSpec.FilterValue}, New={newLookupSpec.FilterValue}";
-                }
-            }
         }
         else
         {
@@ -171,25 +159,17 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         }
 
         // Count mismatches
+        var valueCounts = new Dictionary<string, string>();
         if (analysis.MismatchedValues.Any())
         {
             var countQuery = "";
             var sourceTableName = columnMapping.OldTableName;
             var sourceColumnName = columnMapping.OldColumn;
-            // Build a query to count records with values not in destination, grouped by value
-            var mismatchedValuesList = string.Join(",", analysis.MismatchedValues.Select(v => $"'{v.Replace("'", "''")}'"));
 
+            // Build a query to count records with values not in destination, grouped by value
             if (oldLookupSpec != null)
             {
-                var joinStr = @$"LEFT JOIN {oldLookupSpec.TableName} ON {oldLookupSpec.TableName}.{oldLookupSpec.JoinColumnName} = {sourceTableName}.{sourceColumnName}";
-                if (sourceTableName == oldLookupSpec.TableName)
-                    joinStr = "";
-                countQuery = $@"
-                    SELECT [{sourceColumnName}], [{oldLookupSpec.EnValueColumnName}], COUNT(*) as RecordCount
-                    FROM {sourceTableName}
-                    {joinStr}
-                    GROUP BY [{sourceColumnName}], [{oldLookupSpec.EnValueColumnName}]
-                    ORDER BY RecordCount DESC";
+                countQuery = LookupSpecificationParser.GenerateLookupSqlCountQuery(oldLookupSpec, sourceTableName, sourceColumnName);
             }
             else
             {
@@ -203,7 +183,6 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             // Query the actual count of records in the source for each mismatched value
             // Use database service - connection will be reused
             using var srcReader = await _databaseService.ExecuteReaderAsync(sourceConnectionString, countQuery);
-            var valueCounts = new Dictionary<string, string>();
             var totalAffectedRecords = 0;
             while (await srcReader.ReadAsync())
             {
@@ -224,17 +203,19 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
 
             Console.WriteLine($"Found {analysis.MismatchedValues.Count} mismatched values affecting {totalAffectedRecords} records in {sourceTableName}.{sourceColumnName}");
+            var currentMismatchedValues = new List<string>();
             foreach (var kvp in valueCounts.OrderByDescending(x => x.Value))
             {
                 if (analysis.MismatchedValues.IndexOf(kvp.Key) == -1)
                     continue;
-                analysis.MismatchedValues[analysis.MismatchedValues.IndexOf(kvp.Key)] = $"'{kvp.Key}' {kvp.Value} records";
+                currentMismatchedValues.Add($"'{kvp.Key}' {kvp.Value} records");
                 Console.WriteLine($"  Value '{kvp.Key}': {kvp.Value} records");
             }
+            analysis.MismatchedValues = currentMismatchedValues;
         }
 
         // Build values mapping for matched and unmatched values
-        await BuildValuesMappingAsync(analysis, progress);
+        await BuildValuesMappingAsync(analysis, valueCounts, progress);
 
         return analysis;
     }
@@ -280,13 +261,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         {
             var tableName = FormatTableName(spec.TableName);
             // Query to get values filtered by the specification
-            var sqlExpression = $@"
-            SELECT DISTINCT TOP 50 [{spec.JoinColumnName}] AS LookupCode, 
-            [{spec.EnValueColumnName}] AS LookupEnValue
-            {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",[{spec.ArValueColumnName}] AS LookupArValue")}
-            FROM {tableName}
-            { (!string.IsNullOrEmpty(spec.ColumnName) ? $"WHERE [{spec.ColumnName}] {spec.FilterOperator} {spec.FilterValue}" : "") }
-            ORDER BY [{spec.JoinColumnName}]";
+            var sqlExpression = LookupSpecificationParser.GenerateLookupSqlExpression(spec);
             var lookupQuery = LookupSpecificationParser.GenerateLookupQuery(spec);
             return (await ExecuteQuery(sqlExpression), lookupQuery);
         }
@@ -296,7 +271,7 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
     /// Build values mapping showing matched and unmatched values
     /// Uses semantic matching for unmatched values if available
     /// </summary>
-    private async Task BuildValuesMappingAsync(LookupColumnAnalysis analysis, Progress<MatchingProgress> progress)
+    private async Task BuildValuesMappingAsync(LookupColumnAnalysis analysis, Dictionary<string, string>? valueCounts, Progress<MatchingProgress> progress)
     {
         analysis.ValuesMapping.Clear();
 
@@ -340,14 +315,18 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 mapping.DestinationLookupEnValue = string.Empty;
                 mapping.DestinationLookupArValue = string.Empty;
             }
-
-            analysis.ValuesMapping.Add(mapping);
+            if (valueCounts != null && valueCounts.ContainsKey(mapping.SourceLookupEnValue))
+            {
+                mapping.SourceLookupRecordsCount = valueCounts[mapping.SourceLookupEnValue];
+                analysis.ValuesMapping.Add(mapping);
+            } 
+            //else analysis.ValuesMapping.Add(mapping);
         }
 
         // Try semantic matching for unmatched values
         // Use settings service to create matcher with current settings (runtime switching)
         // or fallback to injected _semanticMatcher
-        var matcher = _settingsService?.CreateMatcher() ?? _semanticMatcher;
+        var matcher = _settingsService?.CreateMatcher();
 
         if (matcher != null && unmatchedSources.Any() && analysis.DestinationSampleValues.Any())
         {
