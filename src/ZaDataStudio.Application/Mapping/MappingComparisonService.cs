@@ -29,11 +29,12 @@ public class MappingComparisonService : IMappingComparisonService
         DataMappingConfiguration sourceMapping,
         string sourceConnectionString,
         string destinationConnectionString,
-        Progress<MatchingProgress> progress)
+        IProgress<AnalysisProgress>? progress = null)
     {
         _sourceConnectionString = sourceConnectionString;
         _destinationConnectionString = destinationConnectionString;
         var comparisonResult = new MappingComparisonResult();
+
         foreach (var tableGroup in sourceMapping.GroupedByTable)
         {
             var destTableName = tableGroup.Key;

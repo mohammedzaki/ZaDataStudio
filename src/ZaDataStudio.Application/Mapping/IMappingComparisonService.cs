@@ -11,5 +11,5 @@ public interface IMappingComparisonService
         DataMappingConfiguration dataMappingConfiguration, 
         string sourceConnectionString, 
         string destinationConnectionString,
-        Progress<MatchingProgress> progress);
+        IProgress<AnalysisProgress>? progress = null);
 }

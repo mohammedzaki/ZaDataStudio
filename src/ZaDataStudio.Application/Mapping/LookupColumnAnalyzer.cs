@@ -31,11 +31,18 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         DataColumnMapping columnMapping,
         string sourceConnectionString,
         string destinationConnectionString,
-        Progress<MatchingProgress> progress)
+        IProgress<AnalysisProgress>? progress)
     {
+        const int totalSteps = 5;
         var analysis = new LookupColumnAnalysis();
 
-        // Load source data using database service - connection will be reused
+        // Step 1: Load source data
+        progress?.Report(AnalysisProgress.Create(
+            "Loading Source Data",
+            1,
+            totalSteps,
+            $"Querying source table {columnMapping.OldTableName}..."));
+
         var sqlExpression = "";
         if (!string.IsNullOrWhiteSpace(columnMapping.MappingRule))
         {
@@ -51,50 +58,115 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         }
 
         using var srcReader = await _databaseService.ExecuteReaderAsync(sourceConnectionString, sqlExpression);
+        var sourceCount = 0;
         while (await srcReader.ReadAsync())
         {
             var code = srcReader[0]?.ToString() ?? "";
             var enValue = srcReader[1]?.ToString() ?? "";
             var arValue = srcReader[2]?.ToString() ?? "";
             analysis.SourceSampleValues.Add(code, new LookupValue(code, enValue, arValue));
+            sourceCount++;
+
+            if (sourceCount % 10 == 0)
+            {
+                progress?.Report(AnalysisProgress.Create(
+                    "Loading Source Data",
+                    1,
+                    totalSteps,
+                    $"Loaded {sourceCount} source values..."));
+            }
         }
         await srcReader.DisposeAsync();
 
-        // Get distinct count - reuses same connection
+        // Get distinct count
         var countQuery = $"SELECT COUNT(DISTINCT [{columnMapping.OldColumn}]) FROM {columnMapping.OldTableName}";
         var countResult = await _databaseService.ExecuteScalarAsync(sourceConnectionString, countQuery);
         analysis.SourceDistinctCount = countResult != null ? Convert.ToInt32(countResult) : 0;
         analysis.SourceLookupQuery = sqlExpression;
 
-        // Load destination data using database service - connection will be reused
+        progress?.Report(AnalysisProgress.Create(
+            "Loading Source Data",
+            1,
+            totalSteps,
+            $"Loaded {analysis.SourceSampleValues.Count} source values"));
+
+        // Step 2: Load destination data
+        progress?.Report(AnalysisProgress.Create(
+            "Loading Destination Data",
+            2,
+            totalSteps,
+            $"Querying destination table {columnMapping.NewTableName}..."));
+
         var destSqlExpression = $@"
             SELECT DISTINCT [{columnMapping.NewColumn}], [{columnMapping.NewColumn}]
             FROM {columnMapping.NewTableName} 
             ORDER BY [{columnMapping.NewColumn}]";
 
         using var destReader = await _databaseService.ExecuteReaderAsync(destinationConnectionString, destSqlExpression);
+        var destCount = 0;
         while (await destReader.ReadAsync())
         {
             var code = destReader[0]?.ToString() ?? "";
             var enValue = destReader[1]?.ToString() ?? "";
             var arValue = destReader[2]?.ToString() ?? "";
             analysis.DestinationSampleValues.Add(code, new LookupValue(code, enValue, arValue));
+            destCount++;
+
+            if (destCount % 10 == 0)
+            {
+                progress?.Report(AnalysisProgress.Create(
+                    "Loading Destination Data",
+                    2,
+                    totalSteps,
+                    $"Loaded {destCount} destination values..."));
+            }
         }
         await destReader.DisposeAsync();
 
-        // Get distinct count - reuses same connection
+        // Get distinct count
         var destCountQuery = $"SELECT COUNT(DISTINCT [{columnMapping.NewColumn}]) FROM {columnMapping.NewTableName}";
         var destCountResult = await _databaseService.ExecuteScalarAsync(destinationConnectionString, destCountQuery);
         analysis.DestinationDistinctCount = destCountResult != null ? Convert.ToInt32(destCountResult) : 0;
 
-        // Find mismatched values (in source but not in destination)
+        progress?.Report(AnalysisProgress.Create(
+            "Loading Destination Data",
+            2,
+            totalSteps,
+            $"Loaded {analysis.DestinationSampleValues.Count} destination values"));
+
+        // Step 3: Find mismatched values
+        progress?.Report(AnalysisProgress.Create(
+            "Comparing Values",
+            3,
+            totalSteps,
+            "Identifying mismatched values..."));
+
         var destValuesSet = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
         analysis.MismatchedValues = analysis.SourceSampleValues.Values.Select(v => v.EnValue)
             .Where(v => !destValuesSet.Contains(v))
             .ToList();
 
-        // Build values mapping for matched and unmatched values
-        await BuildValuesMappingAsync(analysis, null, progress);
+        progress?.Report(AnalysisProgress.Create(
+            "Comparing Values",
+            3,
+            totalSteps,
+            $"Found {analysis.MismatchedValues.Count} mismatched values"));
+
+        // Step 4: Build values mapping
+        progress?.Report(AnalysisProgress.Create(
+            "Building Value Mappings",
+            4,
+            totalSteps,
+            "Creating value mappings..."));
+
+        await BuildValuesMappingAsync(analysis, columnMapping, null, progress);
+
+        // Step 5: Complete
+        progress?.Report(AnalysisProgress.Create(
+            "Complete",
+            5,
+            totalSteps,
+            $"Analysis complete: {analysis.ValuesMapping.Count} mappings created"));
 
         return analysis;
     }
@@ -107,24 +179,40 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         DataColumnMapping columnMapping,
         string sourceConnectionString,
         string destinationConnectionString,
-        Progress<MatchingProgress> progress)
+        IProgress<AnalysisProgress>? progress)
     {
+        const int totalSteps = 7;
         var analysis = new LookupColumnAnalysis();
 
-        // Parse lookup specifications
+        // Step 1: Parse specifications
+        progress?.Report(AnalysisProgress.Create(
+            "Parsing Specifications",
+            1,
+            totalSteps,
+            "Parsing lookup table specifications..."));
+
         var oldLookupSpec = LookupSpecificationParser.Parse(columnMapping.OldLookupTable);
         var newLookupSpec = LookupSpecificationParser.Parse(columnMapping.NewLookupTable);
 
         // If we have lookup specifications, use them
         if (oldLookupSpec != null || newLookupSpec != null)
         {
-            // Load source lookup data
+            // Step 2: Load source lookup data
+            progress?.Report(AnalysisProgress.Create(
+                "Loading Source Data",
+                2,
+                totalSteps,
+                $"Loading source lookup from {oldLookupSpec?.TableName ?? columnMapping.OldTableName}..."));
+
             var sourceLoaded = await LoadLookupDataAsync(
                     sourceConnectionString,
                     columnMapping,
                     oldLookupSpec,
                     analysis.SourceSampleValues,
-                    isSource: true);
+                    isSource: true,
+                    progress,
+                    2,
+                    totalSteps);
             if (sourceLoaded.success)
             {
                 analysis.SourceDistinctCount = analysis.SourceSampleValues.Count;
@@ -132,13 +220,28 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 analysis.SourceLookupQuery = sourceLoaded.lookupQuery;
             }
 
-            // Load destination lookup data
+            progress?.Report(AnalysisProgress.Create(
+                "Loading Source Data",
+                2,
+                totalSteps,
+                $"Loaded {analysis.SourceSampleValues.Count} source values"));
+
+            // Step 3: Load destination lookup data
+            progress?.Report(AnalysisProgress.Create(
+                "Loading Destination Data",
+                3,
+                totalSteps,
+                $"Loading destination lookup from {newLookupSpec?.TableName ?? columnMapping.NewTableName}..."));
+
             var destLoaded = await LoadLookupDataAsync(
                     destinationConnectionString,
                     columnMapping,
                     newLookupSpec,
                     analysis.DestinationSampleValues,
-                    isSource: false);
+                    isSource: false,
+                    progress,
+                    3,
+                    totalSteps);
             if (destLoaded.success)
             {
                 analysis.DestinationDistinctCount = analysis.DestinationSampleValues.Count;
@@ -146,22 +249,58 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 analysis.DestinationLookupQuery = destLoaded.lookupQuery;
             }
 
-            // Compare values
+            progress?.Report(AnalysisProgress.Create(
+                "Loading Destination Data",
+                3,
+                totalSteps,
+                $"Loaded {analysis.DestinationSampleValues.Count} destination values"));
+
+            // Step 4: Compare values
+            progress?.Report(AnalysisProgress.Create(
+                "Comparing Values",
+                4,
+                totalSteps,
+                "Identifying mismatched values..."));
+
             var destValuesSet = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToHashSet(StringComparer.OrdinalIgnoreCase);
             analysis.MismatchedValues = analysis.SourceSampleValues.Values.Select(v => v.EnValue)
                 .Where(v => !destValuesSet.Contains(v))
                 .ToList();
+
+            // Check if filter values match
+            if (oldLookupSpec != null && newLookupSpec != null)
+            {
+                if (oldLookupSpec.ColumnName == newLookupSpec.ColumnName &&
+                    oldLookupSpec.FilterValue != newLookupSpec.FilterValue)
+                {
+                    analysis.LookupFilterMismatch = true;
+                    analysis.LookupFilterMessage =
+                        $"Lookup filter mismatch: Old={oldLookupSpec.FilterValue}, New={newLookupSpec.FilterValue}";
+                }
+            }
+
+            progress?.Report(AnalysisProgress.Create(
+                "Comparing Values",
+                4,
+                totalSteps,
+                $"Found {analysis.MismatchedValues.Count} mismatched values"));
         }
         else
         {
             // Fallback to standard lookup analysis (without specification)
-            analysis = await AnalyzeLookupColumnAsync(columnMapping, sourceConnectionString, destinationConnectionString, progress);
+            return await AnalyzeLookupColumnAsync(columnMapping, sourceConnectionString, destinationConnectionString, progress);
         }
 
-        // Count mismatches
+        // Step 5: Count mismatches
         var valueCounts = new Dictionary<string, string>();
         if (analysis.MismatchedValues.Any())
         {
+            progress?.Report(AnalysisProgress.Create(
+                "Counting Affected Records",
+                5,
+                totalSteps,
+                $"Counting records affected by {analysis.MismatchedValues.Count} mismatches..."));
+
             var countQuery = "";
             var sourceTableName = columnMapping.OldTableName;
             var sourceColumnName = columnMapping.OldColumn;
@@ -184,16 +323,24 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             // Use database service - connection will be reused
             using var srcReader = await _databaseService.ExecuteReaderAsync(sourceConnectionString, countQuery);
             var totalAffectedRecords = 0;
+            var recordCount = 0;
             while (await srcReader.ReadAsync())
             {
                 var value = string.IsNullOrEmpty(srcReader[1]?.ToString()) ? "NULL" : srcReader[1]?.ToString() ?? "";
                 var count = srcReader.GetInt32(2);
                 valueCounts[value] = srcReader[0]?.ToString() + " :> " + count;
                 totalAffectedRecords += count;
-            }
+                recordCount++;
 
-            // Store the counts for reporting (you may need to add this property to LookupColumnAnalysis)
-            // analysis.MismatchedValueCounts = valueCounts;
+                if (recordCount % 10 == 0)
+                {
+                    progress?.Report(AnalysisProgress.Create(
+                        "Counting Affected Records",
+                        5,
+                        totalSteps,
+                        $"Processed {recordCount} value groups..."));
+                }
+            }
 
             analysis.AffectedRecordCountQuery = countQuery;
             if (valueCounts.ContainsKey("NULL"))
@@ -212,10 +359,29 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 Console.WriteLine($"  Value '{kvp.Key}': {kvp.Value} records");
             }
             analysis.MismatchedValues = currentMismatchedValues;
+
+            progress?.Report(AnalysisProgress.Create(
+                "Counting Affected Records",
+                5,
+                totalSteps,
+                $"Found {totalAffectedRecords} affected records"));
         }
 
-        // Build values mapping for matched and unmatched values
-        await BuildValuesMappingAsync(analysis, valueCounts, progress);
+        // Step 6: Build values mapping
+        progress?.Report(AnalysisProgress.Create(
+            "Building Value Mappings",
+            6,
+            totalSteps,
+            "Creating value mappings with semantic matching..."));
+
+        await BuildValuesMappingAsync(analysis, columnMapping, valueCounts, progress);
+
+        // Step 7: Complete
+        progress?.Report(AnalysisProgress.Create(
+            "Complete",
+            7,
+            totalSteps,
+            $"Analysis complete: {analysis.ValuesMapping.Count} mappings created"));
 
         return analysis;
     }
@@ -228,7 +394,10 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
         DataColumnMapping columnMapping,
         LookupTableSpec? spec,
         Dictionary<string, LookupValue> targetList,
-        bool isSource)
+        bool isSource,
+        IProgress<AnalysisProgress>? progress = null,
+        int currentStep = 0,
+        int totalSteps = 0)
     {
         async Task<bool> ExecuteQuery(string sqlQuery)
         {
@@ -271,7 +440,11 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
     /// Build values mapping showing matched and unmatched values
     /// Uses semantic matching for unmatched values if available
     /// </summary>
-    private async Task BuildValuesMappingAsync(LookupColumnAnalysis analysis, Dictionary<string, string>? valueCounts, Progress<MatchingProgress> progress)
+    private async Task BuildValuesMappingAsync(
+        LookupColumnAnalysis analysis, 
+        DataColumnMapping? columnMapping,
+        Dictionary<string, string>? valueCounts, 
+        IProgress<AnalysisProgress>? progress)
     {
         analysis.ValuesMapping.Clear();
 
@@ -326,7 +499,6 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
 
         // Try semantic matching for unmatched values
         // Use settings service to create matcher with current settings (runtime switching)
-        // or fallback to injected _semanticMatcher
         var matcher = _settingsService?.CreateMatcher();
 
         if (matcher != null && unmatchedSources.Any() && analysis.DestinationSampleValues.Any())
@@ -336,11 +508,32 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
                 var destValues = analysis.DestinationSampleValues.Values.Select(v => v.EnValue).ToList();
                 var sourceValues = unmatchedSources.Select(s => s.Value.EnValue).ToList();
 
+                // Create a progress wrapper that converts MatchingProgress to AnalysisProgress with sub-task
+                var semanticProgress = new Progress<MatchingProgress>(matchProgress =>
+                {
+                    if (progress != null)
+                    {
+                        var analysisProgress = AnalysisProgress.Create(
+                            "Building Value Mappings",
+                            columnMapping != null ? 6 : 4, // Step 6 for WithSpec, Step 4 for regular
+                            columnMapping != null ? 7 : 5,
+                            "Performing semantic matching...");
+
+                        analysisProgress.SubTask = SubProgress.Create(
+                            matchProgress.Stage,
+                            matchProgress.Current,
+                            matchProgress.Total,
+                            matchProgress.Message);
+
+                        progress.Report(analysisProgress);
+                    }
+                });
+
                 // Batch match for better performance
                 var semanticMatches = await matcher.BatchMatchAsync(
                     sourceValues, 
                     destValues, 
-                    progress,
+                    semanticProgress,
                     cancellationToken: default);
 
                 // Update mappings with semantic matches

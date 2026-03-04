@@ -64,7 +64,7 @@ public partial class SchemaComparison : ComponentBase
 
     private bool _success;
     private bool _isMatching;
-    private MatchingProgress? _matchingProgress;
+    private AnalysisProgress? _analysisProgress;
 
     // Session management
     private bool showSaveDialog = false;
@@ -1536,7 +1536,7 @@ public partial class SchemaComparison : ComponentBase
 
     private async Task CompareExcelMappings()
     {
-        _matchingProgress = null;
+        _analysisProgress = null;
         _success = false;
         if (excelMappingConfig == null)
         {
@@ -1552,9 +1552,9 @@ public partial class SchemaComparison : ComponentBase
             _isMatching = true;
             StateHasChanged();
 
-            var progress = new Progress<MatchingProgress>(p =>
+            var progress = new Progress<AnalysisProgress>(p =>
             {
-                _matchingProgress = p;
+                _analysisProgress = p;
                 InvokeAsync(StateHasChanged);
             });
 

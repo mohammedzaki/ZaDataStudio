@@ -14,7 +14,7 @@ public interface ILookupColumnAnalyzer
         DataColumnMapping columnMapping,
         string sourceConnectionString,
         string destinationConnectionString,
-        Progress<MatchingProgress> progress);
+        IProgress<AnalysisProgress>? progress);
 
     /// <summary>
     /// Analyze lookup column with specification format
@@ -24,5 +24,5 @@ public interface ILookupColumnAnalyzer
         DataColumnMapping columnMapping,
         string sourceConnectionString,
         string destinationConnectionString,
-        Progress<MatchingProgress> progress);
+        IProgress<AnalysisProgress>? progress);
 }

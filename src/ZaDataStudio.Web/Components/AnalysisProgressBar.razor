@@ -1,0 +1,100 @@
+@using ZaDataStudio.Application.Mapping
+
+@if (Progress != null)
+{
+    <div class="card mb-3">
+        <div class="card-header bg-info text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <span>
+                    <span class="bi bi-hourglass-split me-2"></span>
+                    @Progress.Stage
+                </span>
+                <span class="badge bg-white text-info">@Progress.OverallPercentComplete.ToString("F1")%</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Main Progress Bar -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="small text-muted">Overall Progress</span>
+                    <span class="small text-muted">Step @Progress.CurrentStep of @Progress.TotalSteps</span>
+                </div>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated @GetProgressBarClass()"
+                         role="progressbar"
+                         style="width: @Progress.PercentComplete%"
+                         aria-valuenow="@Progress.PercentComplete"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                        @Progress.PercentComplete.ToString("F0")%
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(Progress.Message))
+                {
+                    <div class="small text-muted mt-1">
+                        <span class="bi bi-info-circle me-1"></span>
+                        @Progress.Message
+                    </div>
+                }
+            </div>
+
+            <!-- Sub-Task Progress (if available) -->
+            @if (Progress.SubTask != null)
+            {
+                <div class="card bg-light">
+                    <div class="card-body py-2">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small fw-bold">
+                                <span class="bi bi-arrow-right-circle me-1"></span>
+                                @Progress.SubTask.Name
+                            </span>
+                            <span class="small">@Progress.SubTask.PercentComplete.ToString("F0")%</span>
+                        </div>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                 role="progressbar"
+                                 style="width: @Progress.SubTask.PercentComplete%"
+                                 aria-valuenow="@Progress.SubTask.PercentComplete"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                @Progress.SubTask.Current / @Progress.SubTask.Total
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(Progress.SubTask.Message))
+                        {
+                            <div class="small text-muted mt-1">
+                                @Progress.SubTask.Message
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Completion Indicator -->
+            @if (Progress.CurrentStep >= Progress.TotalSteps && Progress.SubTask == null)
+            {
+                <div class="alert alert-success mt-2 mb-0">
+                    <span class="bi bi-check-circle-fill me-2"></span>
+                    <strong>Complete!</strong> @Progress.Message
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public AnalysisProgress? Progress { get; set; }
+
+    private string GetProgressBarClass()
+    {
+        if (Progress == null) return "bg-primary";
+
+        var percent = Progress.PercentComplete;
+        if (percent < 25) return "bg-info";
+        if (percent < 50) return "bg-primary";
+        if (percent < 75) return "bg-warning";
+        if (percent < 100) return "bg-success";
+        return "bg-success";
+    }
+}
