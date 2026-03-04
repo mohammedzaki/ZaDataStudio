@@ -317,7 +317,8 @@ public class LookupColumnAnalyzer : ILookupColumnAnalyzer
             }
             if (valueCounts != null && valueCounts.ContainsKey(mapping.SourceLookupEnValue))
             {
-                mapping.SourceLookupRecordsCount = valueCounts[mapping.SourceLookupEnValue];
+                var count = valueCounts[mapping.SourceLookupEnValue].IndexOf('>') + 2;
+                mapping.SourceLookupRecordsCount = valueCounts[mapping.SourceLookupEnValue].Remove(0, count);
                 analysis.ValuesMapping.Add(mapping);
             } 
             //else analysis.ValuesMapping.Add(mapping);

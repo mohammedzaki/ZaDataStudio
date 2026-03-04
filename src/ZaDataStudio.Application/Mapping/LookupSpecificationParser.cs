@@ -98,7 +98,7 @@ public class LookupSpecificationParser
             default:
             case LookupTableSpecType.Simple:
                 query = $@"
-            SELECT DISTINCT TOP 50 [{spec.JoinColumnName}] AS LookupCode, 
+            SELECT DISTINCT [{spec.JoinColumnName}] AS LookupCode, 
             [{spec.EnValueColumnName}] AS LookupEnValue
             {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",[{spec.ArValueColumnName}] AS LookupArValue")}
             FROM {tableName}
@@ -107,7 +107,7 @@ public class LookupSpecificationParser
                 break;
             case LookupTableSpecType.Join:
                 query = $@"
-            SELECT DISTINCT TOP 50 {tableName}.[{spec.JoinColumnName}] AS LookupCode, 
+            SELECT DISTINCT {tableName}.[{spec.JoinColumnName}] AS LookupCode, 
             {tableName}.[{spec.EnValueColumnName}] AS LookupEnValue
             {(string.IsNullOrEmpty(spec.ArValueColumnName) ? "" : $",{tableName}.[{spec.ArValueColumnName}] AS LookupArValue")}
             FROM {tableName}
